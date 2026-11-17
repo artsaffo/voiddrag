@@ -801,6 +801,27 @@ vec3 pal(float t) {
   return mix(uPal[a], uPal[b], f);
 }
 
+// Smooth cubic B-spline lookup built from four bilinear taps. Plain bilinear
+// shows the wind grid as kinks wherever the cloud tears sharply.
+vec4 texCubic(sampler2D t, vec2 uv) {
+  vec2 ts = vec2(textureSize(t, 0));
+  vec2 p = uv * ts - 0.5;
+  vec2 i = floor(p);
+  vec2 f = p - i;
+  vec2 f2 = f * f;
+  vec2 f3 = f2 * f;
+  vec2 w0 = (-f3 + 3.0 * f2 - 3.0 * f + 1.0) / 6.0;
+  vec2 w1 = (3.0 * f3 - 6.0 * f2 + 4.0) / 6.0;
+  vec2 w2 = (-3.0 * f3 + 3.0 * f2 + 3.0 * f + 1.0) / 6.0;
+  vec2 w3 = f3 / 6.0;
+  vec2 g0 = w0 + w1;
+  vec2 g1 = w2 + w3;
+  vec2 h0 = (i - 0.5 + w1 / g0) / ts;
+  vec2 h1 = (i + 1.5 + w3 / g1) / ts;
+  return g0.y * (g0.x * texture(t, h0) + g1.x * texture(t, vec2(h1.x, h0.y)))
+       + g1.y * (g0.x * texture(t, vec2(h0.x, h1.y)) + g1.x * texture(t, h1));
+}
+
 vec2 aspect(vec2 frag) {
   return (frag * 2.0 - uRes) / min(uRes.x, uRes.y);
 }
@@ -1520,8 +1541,8 @@ void main() {
     float excite = maskRaw * 0.7;
     if (uFlowOn > 0.5) {
       vec2 fuv = vec2((q.x - uDrift) / (2.0 * maskExtent.x) + 0.5, q.y / (2.0 * maskExtent.y) + 0.5);
-      flow = texture(uFlow, fuv);
-      float wind = length(texture(uWind, fuv).xy);
+      flow = texCubic(uFlow, fuv);
+      float wind = length(texCubic(uWind, fuv).xy);
       excite = 1.0 - exp(-(wind * 1.4 + flow.z * 0.6 + length(flow.xy) * 1.0));
     }
     excite = clamp(excite + uPress * exp(-dot(pd, pd) * 28.0) * 0.6, 0.0, 1.0);
@@ -2304,8 +2325,20 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
 
       // The wind field needs float render targets; without them the sky
       // falls back to parting cloud with the painted mask.
+      // The grid follows the screen's shape so its cells stay square; a fixed
+      // 2:1 grid on a tall phone made cells four times taller than wide, and
+      // fast strokes showed them as steps along the torn edges.
+      var FLOW_LONG = 384;
       var FLOW_W = 256;
       var FLOW_H = 128;
+      function flowDims() {
+        var w = window.innerWidth || document.documentElement.clientWidth || 1;
+        var h = window.innerHeight || document.documentElement.clientHeight || 1;
+        var a = w / Math.max(1, h);
+        return [Math.max(32, Math.round(FLOW_LONG * Math.min(1, a))),
+                Math.max(32, Math.round(FLOW_LONG * Math.min(1, 1 / a)))];
+      }
+      (function () { var d = flowDims(); FLOW_W = d[0]; FLOW_H = d[1]; })();
       var flowOK = false;
       var flow = null;
       try {
@@ -2353,7 +2386,19 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           map: prog(mapSource),
           v: [target(0), target(0)],
           m: [target(1), target(1)],
-          cur: 0
+          cur: 0,
+          w: FLOW_W,
+          h: FLOW_H,
+          rebuild: function () {
+            f.v.concat(f.m).forEach(function (t) { gl.deleteFramebuffer(t.fb); gl.deleteTexture(t.tex); });
+            f.v = [target(0), target(0)];
+            f.m = [target(1), target(1)];
+            f.cur = 0;
+            f.w = FLOW_W;
+            f.h = FLOW_H;
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.clearColor(0, 0, 0, 1);
+          }
         };
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.clearColor(0, 0, 0, 1);
@@ -2658,6 +2703,12 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
 
       function stepFlow(dt) {
         if (!flowOK || skyAmount <= 0 || dt <= 0) { gusts.length = 0; return; }
+        var dims = flowDims();
+        if (dims[0] !== flow.w || dims[1] !== flow.h) {
+          FLOW_W = dims[0];
+          FLOW_H = dims[1];
+          flow.rebuild();
+        }
         var aspect = canvas.width / Math.max(1, canvas.height);
         var ex = Math.max(1, aspect);
         var ey = Math.max(1, 1 / aspect);
