@@ -1,0 +1,3976 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07070a">
+  <meta name="description" content="VoidDrag — a soft void where light remembers your touch.">
+  <title>VoidDrag — a quiet place for light</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><radialGradient id='g' cx='35%25' cy='28%25'><stop offset='0' stop-color='%23ece4d6'/><stop offset='.55' stop-color='%238e8981'/><stop offset='1' stop-color='%23151517'/></radialGradient></defs><circle cx='32' cy='32' r='27' fill='url(%23g)'/></svg>">
+  <style>
+    :root {
+      --ink: #ece5d9;
+      --ink-soft: rgba(236, 229, 217, 0.7);
+      --ink-dim: rgba(236, 229, 217, 0.46);
+      --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+      --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+      color-scheme: dark;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #07070a;
+    }
+
+    body {
+      overflow: hidden;
+      -webkit-touch-callout: none;
+      color: var(--ink);
+      font-family: var(--sans);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+      background: none;
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    :focus-visible {
+      outline: 1px solid rgba(236, 229, 217, 0.85);
+      outline-offset: 3px;
+    }
+
+    #stage {
+      position: fixed;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: #07070a;
+      cursor: crosshair;
+      opacity: 0;
+      touch-action: none;
+      transition: opacity 1.8s var(--ease);
+    }
+
+    body.ready #stage { opacity: 1; }
+    body.dragging #stage { cursor: grabbing; }
+
+    .mark {
+      position: fixed;
+      z-index: 3;
+      top: max(19px, env(safe-area-inset-top));
+      left: max(21px, env(safe-area-inset-left));
+      pointer-events: none;
+    }
+
+    .mark-main {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-family: var(--serif);
+      font-size: 23px;
+      line-height: 1;
+      letter-spacing: 0.13em;
+      color: var(--ink);
+      text-shadow: 0 1px 18px rgba(0, 0, 0, 0.42);
+    }
+
+    .mark-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #f0e8da, #8e8981 55%, #17171a);
+      box-shadow: 0 0 14px rgba(226, 216, 198, 0.4);
+    }
+
+    .mark small {
+      display: block;
+      margin: 9px 0 0 17px;
+      font-size: 8px;
+      font-weight: 500;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: rgba(236, 229, 217, 0.42);
+      text-shadow: 0 1px 14px rgba(0, 0, 0, 0.45);
+    }
+
+    .top-actions {
+      position: fixed;
+      z-index: 4;
+      top: max(16px, env(safe-area-inset-top));
+      right: max(18px, env(safe-area-inset-right));
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mood {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px 8px 8px;
+      border: 1px solid rgba(236, 229, 217, 0.18);
+      border-radius: 999px;
+      background: rgba(8, 8, 10, 0.36);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: var(--ink-soft);
+      transition: background 0.3s var(--ease), color 0.3s var(--ease);
+    }
+
+    .mood:hover {
+      background: rgba(236, 229, 217, 0.09);
+      color: var(--ink);
+    }
+
+    .sound {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 11px;
+      border: 1px solid rgba(236, 229, 217, 0.16);
+      border-radius: 999px;
+      background: rgba(8, 8, 10, 0.34);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: rgba(236, 229, 217, 0.52);
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      text-transform: lowercase;
+      transition: background 0.3s var(--ease), color 0.3s var(--ease), border-color 0.3s var(--ease);
+    }
+
+    .sound:hover {
+      background: rgba(236, 229, 217, 0.09);
+      color: var(--ink);
+      border-color: rgba(236, 229, 217, 0.3);
+    }
+
+    .sound-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(236, 229, 217, 0.25);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+      transition: background 0.5s var(--ease), box-shadow 0.5s var(--ease);
+    }
+
+    .sound[aria-pressed="true"] .sound-dot {
+      background: var(--ink);
+      box-shadow: 0 0 9px rgba(236, 229, 217, 0.55);
+    }
+
+    .sound:disabled { opacity: 0.35; cursor: default; }
+
+    .mood-dot {
+      width: 19px;
+      height: 19px;
+      border-radius: 50%;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 1px 5px rgba(0, 0, 0, 0.25);
+      transition: background 0.9s var(--ease), transform 0.3s var(--ease);
+    }
+
+    .mood:hover .mood-dot { transform: scale(1.08); }
+
+    .mood-name {
+      min-width: 25px;
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      color: rgba(236, 229, 217, 0.58);
+      text-align: left;
+      text-transform: lowercase;
+    }
+
+    .hint {
+      position: fixed;
+      z-index: 2;
+      left: 50%;
+      bottom: max(24px, env(safe-area-inset-bottom));
+      width: min(92vw, 560px);
+      margin: 0;
+      transform: translateX(-50%);
+      font-size: 10px;
+      letter-spacing: 0.13em;
+      line-height: 1.7;
+      text-align: center;
+      color: rgba(236, 229, 217, 0.62);
+      text-shadow: 0 1px 18px rgba(0, 0, 0, 0.72);
+      pointer-events: none;
+      transition: opacity 1.4s var(--ease);
+    }
+
+    .hint.gone { opacity: 0 !important; }
+
+    body.touch .hint { bottom: max(84px, env(safe-area-inset-bottom)); }
+    body.tuning .hint { opacity: 0; }
+
+    .mode {
+      position: fixed;
+      z-index: 3;
+      left: max(18px, env(safe-area-inset-left));
+      bottom: max(18px, env(safe-area-inset-bottom));
+      display: none;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 11px;
+      border: 1px solid rgba(236, 229, 217, 0.16);
+      border-radius: 999px;
+      background: rgba(8, 8, 10, 0.34);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: rgba(236, 229, 217, 0.55);
+      font-size: 9px;
+      letter-spacing: 0.16em;
+      text-transform: lowercase;
+      pointer-events: none;
+      transition: background 0.4s var(--ease), color 0.4s var(--ease), border-color 0.4s var(--ease), box-shadow 0.4s var(--ease);
+    }
+
+    body.touch .mode { display: inline-flex; }
+
+    .mode-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(236, 229, 217, 0.3);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+      transition: background 0.4s var(--ease), box-shadow 0.4s var(--ease), transform 0.4s var(--ease);
+    }
+
+    body.light-mode .mode {
+      color: var(--ink);
+      border-color: rgba(255, 226, 184, 0.4);
+      background: rgba(236, 229, 217, 0.09);
+      box-shadow: 0 0 24px rgba(255, 214, 158, 0.12);
+    }
+
+    body.light-mode .mode-dot {
+      background: #ffe6bd;
+      box-shadow: 0 0 11px rgba(255, 220, 170, 0.8);
+      transform: scale(1.15);
+    }
+
+    .bottom-actions {
+      position: fixed;
+      z-index: 4;
+      right: max(18px, env(safe-area-inset-right));
+      bottom: max(18px, env(safe-area-inset-bottom));
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ride-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(236, 229, 217, 0.25);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+      transition: background 0.5s var(--ease), box-shadow 0.5s var(--ease);
+    }
+
+    .ride[aria-pressed="true"] {
+      color: var(--ink);
+      border-color: rgba(150, 190, 150, 0.38);
+    }
+
+    .ride[aria-pressed="true"] .ride-dot {
+      background: #86b08a;
+      box-shadow: 0 0 10px rgba(120, 180, 128, 0.6);
+    }
+
+    .sky[aria-pressed="true"] {
+      border-color: rgba(170, 190, 230, 0.38);
+    }
+
+    .sky[aria-pressed="true"] .ride-dot {
+      background: #c9d6f2;
+      box-shadow: 0 0 10px rgba(180, 200, 245, 0.65);
+    }
+
+    .tune, .ride {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 11px;
+      border: 1px solid rgba(236, 229, 217, 0.16);
+      border-radius: 999px;
+      background: rgba(8, 8, 10, 0.34);
+      color: rgba(236, 229, 217, 0.55);
+      font-size: 9px;
+      letter-spacing: 0.16em;
+      text-transform: lowercase;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      transition: background 0.3s var(--ease), color 0.3s var(--ease), border-color 0.3s var(--ease);
+    }
+
+    .tune:hover, body.tuning .tune, .ride:hover {
+      background: rgba(236, 229, 217, 0.09);
+      color: var(--ink);
+      border-color: rgba(236, 229, 217, 0.3);
+    }
+
+    .panel {
+      position: fixed;
+      z-index: 5;
+      right: max(18px, env(safe-area-inset-right));
+      bottom: calc(max(18px, env(safe-area-inset-bottom)) + 42px);
+      width: min(296px, calc(100vw - 36px));
+      padding: 12px;
+      border: 1px solid rgba(236, 229, 217, 0.16);
+      border-radius: 14px;
+      background: rgba(8, 8, 10, 0.82);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      color: var(--ink-soft);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(6px);
+      transition: opacity 0.22s var(--ease), transform 0.22s var(--ease), visibility 0.22s;
+    }
+
+    body.tuning .panel {
+      opacity: 1;
+      visibility: visible;
+      transform: none;
+    }
+
+    .panel { max-height: calc(100vh - 90px); overflow-y: auto; }
+
+    .ink-row {
+      display: grid;
+      grid-template-columns: 42px repeat(3, 28px) minmax(0, 1fr);
+      align-items: center;
+      gap: 6px;
+      margin: 10px 2px;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--ink-dim);
+    }
+
+    .ink-row input[type="color"] {
+      width: 28px;
+      height: 22px;
+      padding: 0;
+      border: 1px solid rgba(236, 229, 217, 0.2);
+      border-radius: 6px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .ink-preview {
+      height: 10px;
+      margin-left: 2px;
+      border-radius: 999px;
+      border: 1px solid rgba(236, 229, 217, 0.12);
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2px 6px;
+      color: var(--ink);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+    }
+
+    .panel-close {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      color: var(--ink-dim);
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .panel-close:hover { background: rgba(236, 229, 217, 0.08); color: var(--ink); }
+
+    .control {
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr) 36px;
+      align-items: center;
+      gap: 8px;
+      margin: 9px 2px;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--ink-dim);
+    }
+
+    .control input[type="range"] {
+      width: 100%;
+      height: 18px;
+      margin: 0;
+      accent-color: rgba(236, 229, 217, 0.72);
+      cursor: pointer;
+    }
+
+    .control output {
+      color: var(--ink-soft);
+      font-family: var(--mono, ui-monospace, monospace);
+      font-size: 10px;
+      text-align: right;
+    }
+
+    .panel-actions {
+      display: flex;
+      gap: 7px;
+      margin: 12px 2px 2px;
+    }
+
+    .panel-actions button {
+      flex: 1;
+      min-height: 28px;
+      border: 1px solid rgba(236, 229, 217, 0.16);
+      border-radius: 999px;
+      color: var(--ink-soft);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      transition: background 0.2s var(--ease), color 0.2s var(--ease);
+    }
+
+    .panel-actions button:hover { background: rgba(236, 229, 217, 0.08); color: var(--ink); }
+
+    .panel-hint {
+      margin: 8px 2px 0;
+      color: rgba(236, 229, 217, 0.56);
+      font-size: 9px;
+      letter-spacing: 0.08em;
+    }
+
+    .panel-note {
+      margin: 9px 2px 0;
+      color: rgba(236, 229, 217, 0.32);
+      font-size: 9px;
+      letter-spacing: 0.05em;
+    }
+
+    @media (max-width: 520px) {
+      .bottom-actions { right: max(13px, env(safe-area-inset-right)); bottom: max(15px, env(safe-area-inset-bottom)); gap: 6px; }
+      .panel {
+        left: max(12px, env(safe-area-inset-left));
+        right: max(12px, env(safe-area-inset-right));
+        width: auto;
+        bottom: calc(max(15px, env(safe-area-inset-bottom)) + 40px);
+      }
+    }
+
+    .fallback {
+      position: fixed;
+      z-index: 10;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 24px;
+      background: #08080b;
+      text-align: center;
+      font-family: var(--serif);
+      font-size: clamp(22px, 4vw, 32px);
+      line-height: 1.25;
+    }
+
+    .fallback.is-open { display: grid; }
+
+    .fallback p { max-width: 520px; margin: 0; }
+
+    @media (max-width: 520px) {
+      .mark-main { font-size: 21px; }
+      .mark small { margin-top: 7px; font-size: 7px; letter-spacing: 0.2em; }
+      .top-actions { top: max(13px, env(safe-area-inset-top)); right: max(13px, env(safe-area-inset-right)); gap: 6px; }
+      .mood { padding: 6px 9px 6px 6px; gap: 7px; }
+      .sound { padding: 6px 8px; gap: 5px; font-size: 8px; }
+      .mood-dot { width: 17px; height: 17px; }
+      .mood-name { font-size: 8px; }
+      .hint { bottom: max(20px, env(safe-area-inset-bottom)); font-size: 9px; letter-spacing: 0.1em; }
+    }
+
+    @media (pointer: coarse) {
+      .sound, .mood { min-height: 36px; }
+      .mode {
+        display: inline-flex;
+        bottom: max(30px, env(safe-area-inset-bottom));
+        min-height: 36px;
+        padding: 9px 13px;
+      }
+      .bottom-actions { bottom: max(30px, env(safe-area-inset-bottom)); }
+      .tune, .ride {
+        min-height: 36px;
+        padding: 9px 13px;
+      }
+      .panel {
+        bottom: calc(max(30px, env(safe-area-inset-bottom)) + 48px);
+      }
+      .hint { bottom: max(84px, env(safe-area-inset-bottom)); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="stage" aria-hidden="true"></canvas>
+
+  <div class="mark" aria-hidden="true">
+    <div class="mark-main"><span class="mark-dot"></span>VoidDrag</div>
+    <small>a quiet place for light</small>
+  </div>
+
+  <div class="top-actions">
+    <button class="sound" id="sound" type="button" aria-pressed="false" aria-label="sound: off" title="sound off (S)">
+      <span class="sound-dot"></span><span>sound</span>
+    </button>
+    <button class="mood" id="mood" type="button" aria-label="change the mood" title="change the mood">
+      <span class="mood-dot" id="moodDot"></span>
+      <span class="mood-name" id="moodName">ash</span>
+    </button>
+  </div>
+
+  <p class="hint" id="hint">left: part &middot; right: illuminate</p>
+
+  <div class="mode" id="mode" role="status" aria-live="polite" aria-atomic="true" aria-label="brush: dark; double-tap to switch"><span class="mode-dot"></span><span id="modeName">brush &middot; dark</span></div>
+
+  <div class="bottom-actions">
+    <button class="ride sky" id="sky" type="button" aria-pressed="true" aria-label="the night sky: on" title="the night sky (K)">
+      <span class="ride-dot"></span><span>sky</span>
+    </button>
+    <button class="ride" id="ride" type="button" aria-pressed="false" aria-label="ride beneath the pines: off" title="ride beneath the pines (R)">
+      <span class="ride-dot"></span><span>ride</span>
+    </button>
+    <button class="tune" id="tune" type="button" aria-label="tune the field" aria-expanded="false" title="tune the field">tune</button>
+  </div>
+
+  <section class="panel" id="panel" aria-hidden="true" aria-label="tune the field">
+    <div class="panel-head"><span>tune</span><button class="panel-close" id="panelClose" type="button" aria-label="close tuning">&times;</button></div>
+    <label class="control" title="How wide the brush is."><span>brush</span><input id="brush" type="range" min="0.4" max="1.4" step="0.05" value="0.80"><output id="brushOut">0.80</output></label>
+    <label class="control" title="How long a mark persists. Raise it to write a whole word."><span>trail</span><input id="trail" type="range" min="0.3" max="8" step="0.1" value="2.0"><output id="trailOut">2.0</output></label>
+    <label class="control" title="How many dust motes are active."><span>particles</span><input id="particles" type="range" min="150" max="1200" step="50" value="600"><output id="particlesOut">600</output></label>
+    <label class="control" title="How strongly strokes move the dust."><span>velocity</span><input id="velocity" type="range" min="0" max="2.5" step="0.05" value="1.00"><output id="velocityOut">1.00</output></label>
+    <label class="control" title="Brightness of the living veil."><span>veil</span><input id="veil" type="range" min="0.3" max="1.6" step="0.05" value="1.00"><output id="veilOut">1.00</output></label>
+    <label class="control" title="How fast the pines pass on the ride."><span>pace</span><input id="pace" type="range" min="0.2" max="2.5" step="0.05" value="1.00"><output id="paceOut">1.00</output></label>
+    <div class="ink-row" title="Three color stops for the veil, illumination and particles."><span>ink</span><input id="ink0" type="color" value="#4a4848" aria-label="ink low" title="low ink"><input id="ink1" type="color" value="#9b958b" aria-label="ink mid" title="mid ink"><input id="ink2" type="color" value="#e6dccd" aria-label="ink high" title="high ink"><span class="ink-preview" id="inkPreview"></span></div>
+    <label class="control" title="Bias the ink ramp toward the low or high stops."><span>curve</span><input id="curve" type="range" min="-1" max="1" step="0.05" value="0.00"><output id="curveOut">0.00</output></label>
+    <div class="panel-actions"><button id="pines" type="button" aria-pressed="true" title="pine style: fine needles or the classic silhouette (P)">pines &middot; fine</button></div>
+    <div class="panel-actions"><button id="still"type="button" title="clear the field">still</button><button id="write" type="button" title="smaller brush, longer trail">write</button><button id="reset" type="button">reset</button></div>
+    <p class="panel-hint">left &middot; part &nbsp; right &middot; light</p>
+    <p class="panel-note">T tune &middot; C still &middot; M mood &middot; S sound &middot; R ride &middot; P pines &middot; K sky</p>
+  </section>
+
+  <div class="fallback" id="fallback" role="alert">
+    <p>VoidDrag needs WebGL2.<br>Try a recent browser.</p>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var MAX_MARKS = 512;
+      var MAX_PARTICLES = 1200;
+      var activeParticles = 600;
+      var MAX_SHOCKS = 8;
+      var particleData = new Float32Array(MAX_PARTICLES * 3 * 4);
+      var particleBuffer = null;
+      var particleVao = null;
+      var particleProgram = null;
+      var particleAttribs = {};
+      var particleUniforms = {};
+      var particles = [];
+      var shockData = new Float32Array(MAX_SHOCKS * 4);
+      var shocks = [];
+      var lastShockAt = 0;
+      var canvas = document.getElementById('stage');
+      var hint = document.getElementById('hint');
+      var moodButton = document.getElementById('mood');
+      var moodDot = document.getElementById('moodDot');
+      var moodName = document.getElementById('moodName');
+      var fallback = document.getElementById('fallback');
+      var soundButton = document.getElementById('sound');
+      var modeChip = document.getElementById('mode');
+      var modeName = document.getElementById('modeName');
+      var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var audio = new VoidAudio();
+      var tuneButton = document.getElementById('tune');
+      var panel = document.getElementById('panel');
+      var panelClose = document.getElementById('panelClose');
+      var brushInput = document.getElementById('brush');
+      var trailInput = document.getElementById('trail');
+      var particlesInput = document.getElementById('particles');
+      var velocityInput = document.getElementById('velocity');
+      var veilInput = document.getElementById('veil');
+      var ink0Input = document.getElementById('ink0');
+      var ink1Input = document.getElementById('ink1');
+      var ink2Input = document.getElementById('ink2');
+      var curveInput = document.getElementById('curve');
+      var paceInput = document.getElementById('pace');
+      var paceOut = document.getElementById('paceOut');
+      var rideButton = document.getElementById('ride');
+      var ride = false;
+      var rideAmount = 0;
+      var travel = Math.random() * 40;
+      // Pine style: 'fine' (branches, needles, wind, falling needles) or the
+      // original 'classic' silhouettes, kept as an option.
+      var pinesButton = document.getElementById('pines');
+      var pinesFine = true;
+      var skyButton = document.getElementById('sky');
+      var sky = true;
+      var skyAmount = 1;
+      // Wind offset in scene units. Clouds and the parted mask both live in
+      // this shifted space, so a parted hole drifts with the cloud around it.
+      var drift = 0;
+      var SKY_WIND = 0.026;
+      var skyHealAcc = 0;
+      var inkPreview = document.getElementById('inkPreview');
+      var brushOut = document.getElementById('brushOut');
+      var trailOut = document.getElementById('trailOut');
+      var particlesOut = document.getElementById('particlesOut');
+      var velocityOut = document.getElementById('velocityOut');
+      var veilOut = document.getElementById('veilOut');
+      var curveOut = document.getElementById('curveOut');
+      var stillButton = document.getElementById('still');
+      var writeButton = document.getElementById('write');
+      var resetButton = document.getElementById('reset');
+
+      var TUNE_DEFAULTS = { brush: 0.80, trail: 2.0, particles: 600, velocity: 1.0, veil: 1.0, ink0: '#4a4848', ink1: '#9b958b', ink2: '#e6dccd', curve: 0.0, pace: 1.0 };
+      var settings = {
+        brush: TUNE_DEFAULTS.brush,
+        trail: TUNE_DEFAULTS.trail,
+        particles: TUNE_DEFAULTS.particles,
+        velocity: TUNE_DEFAULTS.velocity,
+        veil: TUNE_DEFAULTS.veil,
+        ink0: TUNE_DEFAULTS.ink0,
+        ink1: TUNE_DEFAULTS.ink1,
+        ink2: TUNE_DEFAULTS.ink2,
+        curve: TUNE_DEFAULTS.curve,
+        pace: TUNE_DEFAULTS.pace
+      };
+      function validHex(v) { return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v); }
+      try {
+        var savedTune = JSON.parse(localStorage.getItem('opal.tune') || '{}');
+        settings.brush = Math.max(0.4, Math.min(1.4, Number(savedTune.brush) || settings.brush));
+        settings.trail = Math.max(0.3, Math.min(8, Number(savedTune.trail) || settings.trail));
+        settings.particles = Math.max(150, Math.min(MAX_PARTICLES, Number(savedTune.particles) || settings.particles));
+        settings.velocity = Math.max(0, Math.min(2.5, Number(savedTune.velocity) >= 0 ? Number(savedTune.velocity) : settings.velocity));
+        settings.veil = Math.max(0.3, Math.min(1.6, Number(savedTune.veil) || settings.veil));
+        if (validHex(savedTune.ink0)) settings.ink0 = savedTune.ink0;
+        if (validHex(savedTune.ink1)) settings.ink1 = savedTune.ink1;
+        if (validHex(savedTune.ink2)) settings.ink2 = savedTune.ink2;
+        settings.curve = Math.max(-1, Math.min(1, Number(savedTune.curve) || 0));
+        settings.pace = Math.max(0.2, Math.min(2.5, Number(savedTune.pace) || settings.pace));
+      } catch (e) { /* ignore */ }
+      activeParticles = Math.round(settings.particles);
+      var MAX_LIGHTS = 24;
+      var MASK_W = 1024;
+      var MASK_H = 512;
+      var maskCanvas = document.createElement('canvas');
+      maskCanvas.width = MASK_W;
+      maskCanvas.height = MASK_H;
+      var maskCtx = maskCanvas.getContext('2d', { alpha: true });
+      var maskTexture = null;
+      var lightData = new Float32Array(MAX_LIGHTS * 4);
+      var lights = [];
+      var MAX_ATTRACTORS = 8;
+      var attractors = [];
+      var lastLight = null;
+      var lastLightAt = 0;
+      var inkLinear = new Float32Array(9);
+      var particlePalette = new Float32Array(15);
+
+      var MOODS = [
+        { id: 'ash',   colors: ['#070708', '#151517', '#343337', '#8e8981', '#e3d9c9'] },
+        { id: 'pearl', colors: ['#07080a', '#12171b', '#37464e', '#8fa3ab', '#e1ecee'] },
+        { id: 'dusk',  colors: ['#08070b', '#18141e', '#43384d', '#9a8fa2', '#e7dbd5'] },
+        { id: 'moss',  colors: ['#070a08', '#121a15', '#36453a', '#8c9d85', '#e3e5d2'] },
+        { id: 'ember', colors: ['#0a0807', '#1d1612', '#4a352a', '#a17d66', '#ecd7c5'] }
+      ];
+
+      var gl = canvas.getContext('webgl2', {
+        alpha: false,
+        antialias: false,
+        depth: false,
+        stencil: false,
+        premultipliedAlpha: false,
+        powerPreference: 'high-performance'
+      });
+
+      if (!gl) {
+        fallback.classList.add('is-open');
+        return;
+      }
+
+      var vertexSource = `#version 300 es
+void main() {
+  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+      var fragmentSource = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+
+uniform vec2 uRes;
+uniform float uTime;
+uniform vec2 uPointer;
+uniform vec2 uPointerVel;
+uniform float uPress;
+uniform vec3 uPal[5];
+uniform vec4 uMarks[512];
+uniform vec4 uShocks[8];
+uniform float uVeil;
+uniform sampler2D uMask;
+uniform float uErode;
+uniform vec4 uLights[24];
+uniform vec3 uInk[3];
+uniform float uInkCurve;
+uniform float uRide;
+uniform float uTravel;
+uniform float uPines;
+uniform float uSky;
+uniform float uDrift;
+uniform sampler2D uFlow;
+uniform sampler2D uWind;
+uniform float uFlowOn;
+
+#define TAU 6.28318530718
+
+mat2 rot(float a) {
+  float c = cos(a), s = sin(a);
+  return mat2(c, -s, s, c);
+}
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+vec2 hash22(vec2 p) {
+  float n = hash21(p);
+  return vec2(n, hash21(p + n + 17.17));
+}
+
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash21(i);
+  float b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0));
+  float d = hash21(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p, int oct) {
+  float sum = 0.0;
+  float amp = 0.5;
+  float norm = 0.0;
+  for (int i = 0; i < 6; i++) {
+    if (i >= oct) break;
+    sum += amp * vnoise(p);
+    norm += amp;
+    p = rot(0.61) * p * 2.03 + vec2(7.3, -3.1);
+    amp *= 0.5;
+  }
+  return sum / max(norm, 0.0001);
+}
+
+vec3 pal(float t) {
+  t = clamp(t, 0.0, 1.0) * 4.0;
+  float i = floor(t);
+  float f = fract(t);
+  f = f * f * (3.0 - 2.0 * f);
+  int a = int(i);
+  int b = min(a + 1, 4);
+  return mix(uPal[a], uPal[b], f);
+}
+
+vec2 aspect(vec2 frag) {
+  return (frag * 2.0 - uRes) / min(uRes.x, uRes.y);
+}
+
+vec3 finish(vec3 c, vec2 uv) {
+  c = max(c, 0.0);
+  c = 1.0 - exp(-c * 1.22);
+  c = pow(c, vec3(0.45454545));
+  float vig = smoothstep(1.80, 0.28, length(uv * vec2(0.86, 1.0)));
+  c *= mix(1.0, vig, 0.50);
+  float g = hash21(gl_FragCoord.xy * 1.17 + fract(uTime) * 371.0) - 0.5;
+  c += g * 0.034;
+  return clamp(c, 0.0, 1.0);
+}
+
+vec3 voidColor(vec2 p, float t) {
+  float cloud = fbm(p * 1.05 + vec2(t * 0.006, -t * 0.004), 4);
+  vec3 c = uPal[0] * (0.95 + 0.32 * cloud);
+  c += uPal[1] * (0.11 + 0.09 * cloud);
+  c += vec3(0.0031, 0.0029, 0.0033);
+  c *= 0.84 + 0.26 * smoothstep(-1.0, 1.0, p.y);
+  c += uPal[1] * 0.035 * exp(-length(p - vec2(-0.35, 0.35)) * 1.2);
+  return c;
+}
+
+vec3 starField(vec2 p, float t) {
+  vec3 c = vec3(0.0);
+
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i);
+    float scale = 18.0 + fi * 21.0;
+    vec2 sp = p * scale + vec2(fi * 17.0, fi * 29.0);
+    vec2 id = floor(sp);
+    vec2 f = fract(sp) - 0.5;
+    float h = hash21(id + fi * 5.0);
+    float threshold = 0.970 + fi * 0.006;
+    if (h < threshold) continue;
+
+    vec2 o = (hash22(id + 3.0) - 0.5) * 0.70;
+    float tw = 0.55 + 0.45 * sin(t * (0.8 + fi * 0.6) + h * 67.0);
+    float d = length(f - o);
+    float dotPart = exp(-d * d * 1400.0);
+    float halo = exp(-d * d * 42.0);
+    c += uPal[4] * dotPart * tw * (0.12 + 0.08 * fi);
+    c += uPal[3] * halo * 0.0100 * tw;
+  }
+
+  vec2 bp = p * 2.2 + vec2(1.3, -0.6);
+  vec2 bid = floor(bp);
+  vec2 bf = fract(bp) - 0.5;
+  float bh = hash21(bid + 9.0);
+  if (bh > 0.86) {
+    vec2 bo = (hash22(bid + 1.0) - 0.5) * 0.8;
+    float bd = length(bf - bo);
+    c += uPal[3] * exp(-bd * bd * 10.0) * 0.012;
+  }
+
+  return c;
+}
+
+float voronoiEdge(vec2 p, float t, float scale, out float cellRand, out float f1, out vec2 featureDir) {
+  vec2 q = p * scale;
+  vec2 n = floor(q);
+  vec2 f = fract(q);
+  float d1 = 8.0;
+  float d2 = 8.0;
+  vec2 id1 = vec2(0.0);
+  vec2 nearestR = vec2(0.0);
+
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      vec2 g = vec2(float(x), float(y));
+      vec2 h = hash22(n + g);
+      vec2 o = 0.5 + 0.42 * vec2(
+        sin(t * 0.24 + TAU * h.x + (n + g).x * 0.7),
+        cos(t * 0.21 + TAU * h.y + (n + g).y * 0.6)
+      );
+      vec2 r = g + o - f;
+      float d = dot(r, r);
+      if (d < d1) {
+        d2 = d1;
+        d1 = d;
+        id1 = n + g;
+        nearestR = r;
+      } else if (d < d2) {
+        d2 = d;
+      }
+    }
+  }
+
+  cellRand = hash21(id1 + 0.37);
+  f1 = sqrt(d1) / scale;
+  featureDir = normalize(nearestR + 1e-4);
+  return (sqrt(d2) - sqrt(d1)) / scale;
+}
+
+vec3 inkRamp(float t) {
+  t = clamp(t, 0.0, 1.0);
+  if (t < 0.5) return mix(uInk[0], uInk[1], t * 2.0);
+  return mix(uInk[1], uInk[2], (t - 0.5) * 2.0);
+}
+
+
+float darkDust(vec2 p, float t, float scale, float size, float seed) {
+  vec2 sp = p * scale;
+  vec2 flow = vec2(
+    sin(p.y * 2.2 + t * 0.18 + seed * 2.3),
+    cos(p.x * 2.0 - t * 0.15 + seed * 1.7)
+  ) * 0.085;
+  sp += flow;
+  vec2 id = floor(sp);
+  vec2 f = fract(sp) - 0.5;
+  float h = hash21(id + seed);
+  if (h < 0.27) return 0.0;
+  vec2 o = (hash22(id + seed + 3.0) - 0.5) * 0.66;
+  o += 0.15 * vec2(
+    sin(t * (0.22 + h * 0.50) + h * TAU),
+    cos(t * (0.19 + h * 0.40) + h * 13.0)
+  );
+  float d = length(f - o);
+  float core = smoothstep(size, 0.0, d);
+  float tw = 0.55 + 0.45 * sin(t * (0.40 + h * 0.70) + h * 31.0);
+  return core * tw;
+}
+
+// One pine as seen flat on your back: the tip is the part nearest the zenith
+// and the trunk runs straight away from it, so every tree leans in toward the
+// middle of the sky. Tiers flare and tuck back; the edge is bristled.
+float pine(vec2 p, vec2 tip, float h, float size, out float fringe) {
+  fringe = 0.0;
+  vec2 d = normalize(tip);
+  vec2 r = p - tip;
+  float s = dot(r, d);
+  if (s < -0.012) return 0.0;
+  float w = abs(dot(r, vec2(-d.y, d.x)));
+  float body = size * (0.150 * (1.0 - exp(-s * 5.0 / size)) + 0.045 * s);
+  if (w > body + 0.035) return 0.0;
+  float tier = 0.052 * size * (0.8 + 0.4 * h);
+  float flare = fract(s / tier + h * 7.0);
+  float hw = body * (0.40 + 0.60 * flare);
+  float grown = smoothstep(0.0, 0.07, s);
+  float bristle = abs(fract(s * 44.0 / size + w * 26.0 + h * 3.0) - 0.5) * 2.0;
+  hw += (bristle - 0.5) * 0.018 * size * grown;
+  hw += (vnoise(vec2(s, w) * 36.0 + h * 91.0) - 0.5) * 0.022 * size * grown;
+  hw = max(hw, 0.0035);
+  float aa = 1.5 / min(uRes.x, uRes.y);
+  float m = smoothstep(aa, -aa, w - hw) * smoothstep(-0.012, 0.0, s);
+  fringe = m * (1.0 - smoothstep(0.0, 0.020 * size, hw - w));
+  return m;
+}
+
+// Wind through the canopy: broad gust fronts rolling across the sky in one
+// direction. Sampled per pixel in scrolled world space, so a gust travels
+// through a tree branch by branch instead of bending all of it at once.
+const vec2 PINE_WIND = vec2(0.857, 0.514);
+
+float pineGust(vec2 wp, float t) {
+  float a = dot(wp, PINE_WIND);
+  float b = dot(wp, vec2(-PINE_WIND.y, PINE_WIND.x));
+  float front = vnoise(vec2(a * 1.1 - t * 0.34, b * 0.55 + t * 0.02));
+  float g = smoothstep(0.48, 0.86, front);
+  float spell = 0.5 + 0.5 * sin(t * 0.071 + 1.3 * sin(t * 0.029));
+  return g * (0.30 + 0.70 * spell);
+}
+
+float tierSway(float id, float h, float t) {
+  float r = hash21(vec2(id, h * 53.0 + 1.3));
+  return sin(t * (1.9 + 1.3 * r) + r * TAU);
+}
+
+// The fine pine: the classic outline grown into branches. Each tier is a whorl
+// whose drooping lower edge is a branch; needles hang off its rib in
+// herringbone tufts and bristle past the outline, and the crown behind is
+// dense with a few holes of sky. Wind bends tips and leaves the trunk be:
+// offsets grow with distance from the axis, and each tier flutters on its own.
+float pineFine(vec2 p, vec2 tip, float h, float size, float t, float gust, vec2 wdir,
+               out float fringe, out float shade) {
+  fringe = 0.0;
+  shade = 0.0;
+  vec2 d = normalize(tip);
+  vec2 n = vec2(-d.y, d.x);
+  vec2 r = p - tip;
+  float s = dot(r, d);
+  if (s < -0.03 * size) return 0.0;
+  float x = dot(r, n);
+  float sp = max(s, 0.0);
+  float body = size * (0.150 * (1.0 - exp(-sp * 5.0 / size)) + 0.045 * sp);
+  if (abs(x) > body + 0.05 * size) return 0.0;
+
+  float tierLen = 0.052 * size * (0.8 + 0.4 * h);
+  float sf = s / tierLen + h * 7.0;
+  float id = floor(sf);
+  float tf0 = fract(sf);
+  // Each tier flutters on its own; neighbours meet halfway at the seam so a
+  // branch never jumps.
+  float swA = tierSway(id - 1.0, h, t);
+  float swB = tierSway(id, h, t);
+  float swC = tierSway(id + 1.0, h, t);
+  float sw = mix(swB, 0.5 * (swB + swC), smoothstep(0.80, 1.0, tf0));
+  sw = mix(sw, 0.5 * (swA + swB), 1.0 - smoothstep(0.0, 0.20, tf0));
+
+  float flex = clamp(abs(x) / max(body, 0.004), 0.0, 1.4);
+  flex *= flex;
+  float crown = exp(-sp * 2.5 / size);
+  vec2 wl = vec2(dot(wdir, n), dot(wdir, d));
+  float bend = size * (flex * (gust * 0.026 + (0.0035 + 0.0060 * gust) * sw)
+                     + crown * (gust * 0.014 + 0.004 * sin(t * 0.47 + h * 19.0)));
+  x -= wl.x * bend;
+  s -= wl.y * bend * 0.6 + sw * flex * 0.0025 * size;
+
+  sp = max(s, 0.0);
+  body = size * (0.150 * (1.0 - exp(-sp * 5.0 / size)) + 0.045 * sp);
+  sf = s / tierLen + h * 7.0;
+  id = floor(sf);
+  float tf = fract(sf);
+  float ax = abs(x);
+  float ub = ax / max(body, 1e-4);
+  float px = 1.0 / min(uRes.x, uRes.y);
+  float aa = px * 0.9;
+
+  // Signed depth inside the tier's drooping lower edge, along the trunk.
+  float ds = (tf - (ub - 0.40) / 0.60) * tierLen;
+  float run = 0.60 * body;
+  float slopeFix = run / sqrt(run * run + tierLen * tierLen);
+
+  // The branch rib sits a little inside the outline; needles leave it on both
+  // sides, swept toward the branch tip, shorter and thinner toward its end.
+  float nl = tierLen * 0.70;
+  float across = (ds - nl * 0.55) * slopeFix;
+  // Needles are thinner than a pixel on most screens: draw them a crisp pixel
+  // wide and let their real width set how dark they are. Two crossing sets,
+  // a few missing, so the skirt reads as a brush and not a comb.
+  float branchOn = 1.0 - smoothstep(1.02, 1.10, ub);
+  float tipShort = 1.0 - 0.45 * smoothstep(0.70, 1.05, ub);
+  float needles = 0.0;
+  for (int set = 0; set < 2; set++) {
+    float fs = float(set);
+    float spacing = (0.012 - 0.0025 * fs) * size;
+    float sweep = 0.95 - 0.38 * fs;
+    float droop = (1.4 + 1.2 * fs) / size;
+    float q = (ax - abs(across) * sweep - across * across * droop) / spacing + h * 13.0 + fs * 0.37;
+    float nh = hash21(vec2(floor(q), id * 7.0 + h * 31.0 + sign(across) + fs * 17.0));
+    if (nh < 0.18) continue;
+    float lenN = nl * slopeFix * (0.50 + 0.40 * nh) * tipShort * (1.0 - 0.18 * fs);
+    float onNeedle = 1.0 - smoothstep(lenN * 0.70, lenN, abs(across));
+    float distN = abs(fract(q) - 0.5) * spacing * 0.72;
+    float realW = (0.00030 + 0.00022 * size) * (1.0 - 0.6 * clamp(abs(across) / max(lenN, 1e-4), 0.0, 1.0));
+    float drawW = max(realW, 0.5 * px);
+    needles = max(needles, smoothstep(drawW + aa, drawW - aa * 0.5, distN) * onNeedle
+                * clamp(realW / drawW * 1.4, 0.35, 1.0));
+  }
+  needles *= branchOn;
+
+  float ribReal = (0.0004 + 0.0008 * size) * (1.0 - 0.6 * clamp(ub, 0.0, 1.0));
+  float ribW = max(ribReal, 0.5 * px);
+  float rib = smoothstep(ribW + aa, ribW - aa * 0.5, abs(across)) * (1.0 - smoothstep(0.92, 1.02, ub))
+            * clamp(ribReal / ribW * 1.4, 0.45, 1.0);
+
+  // The dense crown behind the skirt: a lumpy edge, opened by a few holes of
+  // sky toward the branch tips.
+  float clump = vnoise(vec2(ax, s) * (30.0 / size) + h * 91.0 + id * 3.1);
+  float lump = vnoise(vec2(ax * 90.0 / size, id * 5.3 + h * 17.0)) * 0.65
+             + vnoise(vec2(ax * 260.0 / size, id * 2.1 + h * 5.0)) * 0.35;
+  float holes = smoothstep(0.55, 0.95, ub) * smoothstep(0.58, 0.78, clump);
+  float massAt = nl * (0.80 + 0.90 * (lump - 0.5)) * slopeFix;
+  float mass = smoothstep(-aa, aa, ds * slopeFix - massAt) * (1.0 - holes);
+
+  float top = smoothstep(-0.012, 0.0, s);
+  float cov = max(mass, max(needles, rib * 0.95)) * top;
+  fringe = max(needles, rib) * (1.0 - mass) * top;
+  shade = (1.0 - smoothstep(0.0, 0.9, ub)) * mass;
+  return cov;
+}
+
+vec3 segT(vec2 p, vec2 a, vec2 b) {
+  vec2 pa = p - a, ba = b - a;
+  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return vec3(length(pa - ba * h), h, 0.0);
+}
+
+// Now and then a needle pair lets go: it drifts with the wind, sways, tumbles
+// edge-on and back, and grows as it falls toward you until it slips out of
+// focus. Cells over the scrolled sky each roll a long cycle; most stay empty,
+// and the open middle of the sky, far from the trees, seldom gets one.
+vec4 fallingNeedles(vec2 p, vec2 ext, float lit, float t) {
+  float px = 1.0 / min(uRes.x, uRes.y);
+  float cell = 0.5;
+  vec2 fp = vec2(p.x, p.y + uTravel * 0.85);
+  vec2 c0 = floor(fp / cell);
+  float cover = 0.0;
+  float dry = 0.0;
+  float glint = 0.0;
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      vec2 cid = c0 + vec2(float(i), float(j));
+      vec2 hc = hash22(cid * 1.37 + 4.1);
+      float period = 24.0 + 20.0 * hc.x;
+      float cyc = t / period + hc.y;
+      float k0 = floor(cyc);
+      float age = fract(cyc) * period;
+      vec2 hr = hash22(cid + k0 * 7.31 + 0.5);
+      float life = 7.0 + 5.0 * hr.x;
+      if (age > life) continue;
+      vec2 start = (cid + hash22(cid * 0.71 + k0 * 1.93 + 9.0)) * cell;
+      float fromTrees = smoothstep(0.20, 0.55, abs(start.x) / ext.x);
+      if (hr.y > 0.42 * fromTrees) continue;
+      vec2 hq = hash22(cid * 3.3 + k0 * 2.17 + 1.7);
+      float k = age / life;
+
+      float gust = pineGust(start, t);
+      vec2 center = start
+        + PINE_WIND * (0.10 + 0.16 * hq.x + 0.10 * gust) * k * (1.0 + 0.6 * k)
+        + vec2(sin(age * 1.15 + hq.y * TAU), 0.6 * sin(age * 0.83 + hq.x * TAU)) * (0.018 + 0.012 * hq.y)
+        + normalize(start + 1e-3) * 0.05 * k * k;
+      vec2 lp = fp - center;
+      if (dot(lp, lp) > 0.04) continue;
+
+      float scale = mix(0.8, 2.4, k * k) * (0.8 + 0.4 * hq.y);
+      float fade = smoothstep(0.0, 0.12, k) * (1.0 - smoothstep(0.72, 1.0, k));
+      float blur = px * (1.0 + 7.0 * smoothstep(0.55, 1.0, k));
+      float spin = (hq.y > 0.5 ? 1.0 : -1.0) * (0.35 + 0.6 * hq.y);
+      float ang = hq.x * TAU + age * spin + 0.5 * sin(age * 1.7 + hq.x * 9.0);
+      float turn = cos(age * (0.5 + 0.5 * hq.x) + hq.y * 5.0);
+      float flip = 0.30 + 0.70 * abs(turn);
+      float len = 0.050 * scale * flip;
+      float spread = 0.16 + 0.07 * sin(age * 0.9 + hq.x * 4.0);
+      vec2 d0 = vec2(cos(ang), sin(ang));
+      vec2 base = -d0 * len * 0.5;
+      vec3 a1 = segT(lp, base, base + vec2(cos(ang + spread), sin(ang + spread)) * len);
+      vec3 a2 = segT(lp, base, base + vec2(cos(ang - spread), sin(ang - spread)) * len);
+      if (hq.x < 0.22) a2.x = 1e3;
+      float th = 0.0011 * scale;
+      float e1 = a1.x - th * (1.0 - 0.6 * a1.y);
+      float e2 = a2.x - th * (1.0 - 0.6 * a2.y);
+      float sheath = length(lp - base) - th * 1.5;
+      float e = min(min(e1, e2), sheath);
+      float m = (1.0 - smoothstep(-blur, blur, e)) * clamp((th + px) / (th + blur), 0.2, 1.0) * fade;
+      if (m > cover) {
+        cover = m;
+        dry = step(0.7, hc.x);
+        // Turned flat to the sky, the waxy needle catches a little of it.
+        glint = smoothstep(0.80, 1.0, abs(turn));
+      }
+    }
+  }
+  vec3 green = vec3(0.010, 0.022, 0.012) + uPal[2] * 0.05;
+  vec3 brown = vec3(0.030, 0.020, 0.011) + uPal[2] * 0.04;
+  vec3 c = mix(green, brown, dry) + vec3(0.010, 0.030, 0.013) * lit * 2.2;
+  c += (uPal[3] * 0.05 + vec3(0.004, 0.010, 0.005)) * glint;
+  return vec4(c, cover);
+}
+
+// The ride: three lanes of pines on each side of the path. A tip only ever
+// slides straight down the view; shorter, nearer trees sit further out and
+// pass faster, which is all the parallax there is.
+vec4 canopy(vec2 p, float lit) {
+  vec2 ext = uRes / min(uRes.x, uRes.y);
+  float side = p.x < 0.0 ? -1.0 : 1.0;
+  vec2 mp = vec2(abs(p.x), p.y);
+  vec3 deep = vec3(0.0016, 0.0050, 0.0028);
+  vec3 needle = vec3(0.010, 0.030, 0.013);
+  vec3 rgb = vec3(0.0);
+  float alpha = 0.0;
+  bool fine = uPines > 0.5;
+
+  for (int L = 0; L < 3; L++) {
+    float fl = float(L);
+    float reach = 0.50 + 0.23 * fl;
+    float lane = ext.x * reach;
+    float spacing = 0.46 + 0.09 * fl;
+    float scroll = uTravel * reach + fl * 3.7;
+    float size = 0.80 + 0.28 * fl;
+    float c0 = floor((-ext.y - 0.30 + scroll) / spacing);
+    float cover = 0.0;
+    float edge = 0.0;
+    float shade = 0.0;
+    float gust = 0.0;
+    vec2 wm = vec2(PINE_WIND.x * side, PINE_WIND.y);
+    if (fine) gust = pineGust(vec2(p.x, p.y + scroll), uTime);
+
+    for (int k = 0; k < 14; k++) {
+      float c = c0 + float(k);
+      vec2 hh = hash22(vec2(c, fl * 13.0 + side * 5.0 + 2.0));
+      float ty = (c + 0.2 + 0.6 * hh.y) * spacing - scroll;
+      if (ty > ext.y + 0.30) break;
+      vec2 tip = vec2(lane * (0.86 + 0.28 * hh.x), ty);
+      float fr;
+      float sh = 0.0;
+      float sz = size * (0.80 + 0.40 * hh.y);
+      float a = fine
+        ? pineFine(mp, tip, hh.x, sz, uTime + fl * 11.0 + hh.y * 5.0, gust, wm, fr, sh)
+        : pine(mp, tip, hh.x, sz, fr);
+      cover = max(cover, a);
+      edge = max(edge, fr);
+      shade = max(shade, sh);
+    }
+
+    vec3 c = deep * (1.5 - 0.3 * fl) + uPal[2] * (0.08 - 0.03 * fl);
+    c *= 1.0 - 0.35 * shade;
+    // A passing gust turns the needles and they catch a little more sky.
+    c += needle * edge * (0.26 + 0.10 * fl) * (fine ? 0.45 + 1.4 * gust : 1.0);
+    c += needle * lit * (1.5 + 2.6 * edge);
+    rgb = mix(rgb, c, cover);
+    alpha += cover * (1.0 - alpha);
+  }
+
+  if (fine) {
+    vec4 fall = fallingNeedles(p, ext, lit, uTime);
+    rgb = mix(alpha > 0.001 ? rgb : fall.rgb, fall.rgb, fall.a);
+    alpha += fall.a * (1.0 - alpha);
+  }
+
+  return vec4(rgb, alpha);
+}
+
+vec3 voidScene(vec2 q, float maskRaw, float lightSum) {
+  vec3 col = voidColor(q, uTime);
+  col += starField(q, uTime);
+
+  // On the ride the sky lifts a little, so the pines read as silhouettes.
+  if (uRide > 0.001) {
+    float skyX = q.x / (1.25 * uRes.x / min(uRes.x, uRes.y));
+    float sky = (0.62 + 0.38 * fbm(q * 0.8 + vec2(0.0, uTravel * 0.05), 3)) * exp(-skyX * skyX);
+    col += mix(uPal[2], uPal[3], 0.22) * sky * 0.40 * uRide;
+  }
+
+  vec2 distortion = vec2(
+    fbm(q * 1.7 + vec2(uTime * 0.020, -uTime * 0.014), 3),
+    fbm(q * 1.7 + vec2(4.7, 2.1) - uTime * 0.017, 3)
+  ) - 0.5;
+
+  vec2 masked = q + distortion * 0.055;
+  float maskSum = 0.0;
+
+  float wobble = (vnoise(q * 7.0 + vec2(uTime * 0.035, -uTime * 0.028)) - 0.5) * (0.030 + uErode * 0.12);
+  maskSum = smoothstep(clamp(uErode + wobble, 0.0, 0.999), 1.0, maskRaw);
+
+  float reveal = 1.0 - exp(-maskSum * 1.30);
+  reveal *= 0.78 + 0.22 * fbm(q * 2.4 + vec2(uTime * 0.015, -uTime * 0.011), 3);
+
+  // Shockwaves are only a displacement of the field; they are never drawn as rings.
+  float scrAspect = uRes.x / uRes.y;
+  float breath = sin(uTime * 0.11 + sin(uTime * 0.037) * 1.7);
+  vec2 shockDisp = vec2(0.0);
+  float shockEnergy = 0.0;
+
+  for (int i = 0; i < 8; i++) {
+    vec4 sh = uShocks[i];
+    if (sh.w <= 0.001) continue;
+    vec2 d = q - sh.xy;
+    float dist = length(d);
+    float age = sh.z;
+    float front = age * 0.82;
+    float width = 0.055 + age * 0.055;
+    float env = exp(-pow((dist - front) / width, 2.0));
+    env *= exp(-age * 0.62) * sh.w;
+    float warp = sin(d.x * 7.0 + age * 2.1) * cos(d.y * 6.0 - age * 1.7);
+    vec2 dir = normalize(d + 0.0001);
+    dir = rot(warp * 1.9) * dir;
+    shockDisp += dir * env * 0.105;
+    shockDisp += vec2(-dir.y, dir.x) * env * 0.052 * sin(age * 3.3 + dist * 7.0);
+    shockEnergy += env;
+  }
+
+  vec2 shockUv = vec2(shockDisp.x / (2.0 * scrAspect), shockDisp.y * 0.5);
+
+  // The pattern is now a living veil. Touch removes it; the subject is the negative space.
+  float veilTime = uTime * 0.045;
+  vec2 vp = q * 2.15 + shockDisp * 0.8;
+  float w1 = fbm(vp * 0.68 + vec2(veilTime, -veilTime * 0.72), 3);
+  float w2 = fbm(vp * 1.02 + w1 * 1.7 + vec2(-veilTime * 0.85, veilTime * 0.63), 3);
+  vec2 wp = vp + vec2(w1, w2) * 1.65;
+
+  float n = fbm(wp, 5);
+  float filament = pow(max(0.0, 1.0 - abs(n * 2.0 - 1.0)), 7.5);
+  float micro = fbm(wp * 2.7 + vec2(veilTime * 0.7, -veilTime * 0.5), 3);
+  float veil = filament * (0.45 + 0.55 * micro);
+
+  float rawMask = maskSum;
+  float shape = rawMask + (vnoise(q * 9.0 + vec2(uTime * 0.050, -uTime * 0.030)) - 0.5) * 0.050 * smoothstep(0.0, 0.12, rawMask);
+  float local = smoothstep(0.0, 0.26, shape);
+  float hole = smoothstep(0.28, 0.88, shape);
+  float rim = exp(-pow((shape - 0.34) / 0.11, 2.0));
+  float shell = local * (1.0 - hole);
+  float fibrous = 0.16 + 0.84 * filament;
+  float light = 1.0 - exp(-lightSum * 1.15);
+
+  float inkT = clamp(0.5 + 0.5 * sin(q.x * 1.3 + q.y * 0.9 + uTime * 0.02), 0.0, 1.0);
+  inkT = pow(inkT, exp2(uInkCurve * 1.8));
+  vec3 ink = inkRamp(inkT);
+
+  float value = shell * fibrous * breath * uVeil;
+  float lightFade = 1.0 - light * 0.90;
+  col += ink * value * 0.85 * lightFade;
+  col += ink * rim * local * uVeil * (0.014 + min(shockEnergy, 1.2) * 0.010) * lightFade;
+  col += inkRamp(0.82) * light * 0.10;
+
+  // The stroke is not a hollow outline: its center becomes an opaque void,
+  // then it tears open at the edge in a broken, fibrous rift.
+  float erase = 1.0 - exp(-lightSum * 2.6);
+  float abyssDepth = smoothstep(0.02, 0.82, shape);
+  abyssDepth *= 0.92 + 0.08 * vnoise(q * 13.0 + vec2(uTime * 0.035, -uTime * 0.025));
+  abyssDepth *= 1.0 - erase * 0.985;
+  float penumbra = smoothstep(0.0, 0.34, shape) * (1.0 - smoothstep(0.40, 0.86, shape));
+  col *= 1.0 - penumbra * 0.20 * (1.0 - erase * 0.75);
+  vec3 abyss = vec3(0.0008, 0.0009, 0.0013) + ink * 0.004 * (0.35 + 0.65 * micro);
+  col = mix(col, abyss, abyssDepth * 0.94);
+
+  // Fine dust lives only inside the painted rift. It is clipped by the mask,
+  // so the darkness is the container rather than a separate particle field.
+  float dustMask = smoothstep(0.24, 0.82, shape) * (1.0 - erase * 0.985);
+  float dustA = darkDust(q + shockDisp * 0.28, uTime, 13.0, 0.070, 1.7);
+  float dustB = darkDust(q + shockDisp * 0.48, uTime, 31.0, 0.045, 8.3);
+  vec3 dustCol = mix(inkRamp(0.94), vec3(0.72, 0.69, 0.62), 0.30);
+  col += dustCol * dustMask * (dustA * 0.140 + dustB * 0.070) * (1.0 + min(shockEnergy, 1.0) * 0.35);
+
+  float crackFade = 1.0 - erase * 0.96;
+  float rift = exp(-pow((shape - 0.24) / (0.020 + 0.014 * micro), 2.0));
+  float crackNoise = fbm(q * 11.0 + vec2(uTime * 0.020, -uTime * 0.017), 3);
+  float cracks = rift * smoothstep(0.48, 0.66, crackNoise) * (0.35 + 0.65 * filament);
+  float hairline = exp(-pow((shape - 0.24 - 0.010 * sin(q.x * 28.0 - q.y * 24.0 + uTime * 0.10)) / (0.004 + 0.003 * micro), 2.0));
+  vec3 crackColor = mix(inkRamp(0.96), vec3(0.90, 0.85, 0.77), 0.30);
+  float edgeLine = 1.0 - smoothstep(0.0, 0.012, abs(shape - 0.235 - 0.006 * sin(q.x * 19.0 + q.y * 17.0 - uTime * 0.07)));
+  float edgeBreak = smoothstep(0.42, 0.64, fbm(q * 17.0 + vec2(-uTime * 0.015, uTime * 0.011), 2));
+  col += crackColor * rift * 0.026 * crackFade;
+  col += crackColor * cracks * 0.34 * crackFade;
+  col += crackColor * hairline * smoothstep(0.50, 0.68, crackNoise) * 0.10 * crackFade;
+  col += crackColor * edgeLine * edgeBreak * 0.30 * crackFade;
+  return col;
+}
+
+// ---------------------------------------------------------------------------
+// The sky. Here the subject is the night itself: haze and cloud cover it, a
+// touch parts them, and the stars are what you find underneath. The parted
+// cloud drifts on with the wind and closes back over by itself.
+// ---------------------------------------------------------------------------
+
+vec3 starTint(float h) {
+  vec3 hot = vec3(0.66, 0.77, 1.00);
+  vec3 sun = vec3(1.00, 0.96, 0.89);
+  vec3 cool = vec3(1.00, 0.74, 0.50);
+  h = h * h * (3.0 - 2.0 * h);
+  return h < 0.5 ? mix(hot, sun, h * 2.0) : mix(sun, cool, (h - 0.5) * 2.0);
+}
+
+// Stars are rare, tiny specks of glow: most barely there, a few carrying
+// faint flare spikes. Each shimmers slowly on its own clock and now and then
+// catches a brief glint. excite (0..1) is how hard the air over it is being
+// stirred: it quickens and deepens the shimmer and draws the flares out.
+// Tuning: STAR_* below.
+#define STAR_KEEP_NEAR 0.060   // share of cells holding a near (flared) star
+#define STAR_KEEP_FAR 0.030    // share of cells holding a far speck
+#define STAR_BRIGHT 1.0        // overall star brightness
+#define STAR_SHIMMER 0.22      // idle shimmer depth
+#define STAR_SHIMMER_STIR 0.55 // extra shimmer depth when stirred
+vec3 skyStars(vec2 s, float excite, float t) {
+  vec3 c = vec3(0.0);
+  float pxPerUnit = 0.5 * min(uRes.x, uRes.y);
+  for (int i = 0; i < 2; i++) {
+    float fi = float(i);
+    float scale = 9.0 + fi * 14.0;                     // 9 near, 23 far
+    vec2 sp = s * scale + vec2(fi * 31.7, fi * 17.3);
+    vec2 id = floor(sp);
+    vec2 f = fract(sp) - 0.5;
+    float h = hash21(id + fi * 11.0);
+    if (h > mix(STAR_KEEP_NEAR, STAR_KEEP_FAR, fi)) continue;
+    vec2 o = (hash22(id + 7.0 + fi) - 0.5) * 0.36;
+    float hb = hash21(id + 41.0 + fi);
+    vec2 dp = (f - o) * pxPerUnit / scale;             // offset in pixels
+    float d2 = dot(dp, dp);
+
+    // Shimmer: two slow beating sines, plus a rare sharp glint.
+    float ph = hb * 61.0 + h * 173.0;
+    float rate = 1.0 + 1.8 * excite;
+    float slow = sin(t * (0.31 + 0.45 * hb) * rate + ph)
+               * (0.6 + 0.4 * sin(t * (0.83 + 1.1 * fract(h * 37.0)) * rate + ph * 1.7));
+    float glint = pow(max(0.0, sin(t * (0.13 + 0.11 * fract(h * 53.0)) * (1.0 + 4.0 * excite) + ph * 3.1)), 28.0);
+    float depth = STAR_SHIMMER + STAR_SHIMMER_STIR * excite;
+    float tw = max(0.12, 1.0 + depth * slow + (0.5 + 1.3 * excite) * glint);
+
+    float b = (0.020 + 0.17 * pow(hb, 4.0)) * (1.0 - fi * 0.6) * STAR_BRIGHT;
+    b *= 1.0 + 0.35 * excite;
+    float core = exp(-d2 / (0.55 + 0.6 * hb));
+    float halo = exp(-sqrt(d2) / (1.4 + 1.8 * hb)) * 0.10;
+    float glow = core + halo;
+
+    // Flares: a thin, faint cross, tilted a little per star, only on the
+    // brighter near stars. They breathe with the glint and stretch when stirred.
+    if (i == 0) {
+      float fl = smoothstep(0.55, 0.95, hb);
+      if (fl > 0.0) {
+        vec2 r = rot(0.35 + (h / STAR_KEEP_NEAR - 0.5) * 0.5) * dp;
+        float len = 2.2 + 3.5 * hb + 3.0 * excite + 3.0 * glint;
+        float spikes = exp(-abs(r.y) * 2.2 - abs(r.x) / len)
+                     + exp(-abs(r.x) * 2.2 - abs(r.y) / len);
+        glow += spikes * fl * (0.10 + 0.25 * glint + 0.20 * excite);
+      }
+    }
+
+    // Fade out before the cell edge so no glow is cut off by its neighbour.
+    float win = 1.0 - smoothstep(0.36, 0.5, max(abs(f.x), abs(f.y)));
+    vec3 tint = mix(vec3(1.0), starTint(hash21(id + 3.3 + fi)), 0.6);
+    c += tint * glow * b * tw * win;
+  }
+  return c;
+}
+
+float cloudField(vec2 c, float t) {
+  vec2 w = vec2(
+    fbm(c * 0.85 + vec2(0.0, t * 0.012), 3),
+    fbm(c * 0.85 + vec2(5.2, 1.3) - t * 0.009, 3)
+  );
+  return fbm(c * 1.30 + (w - 0.5) * 1.5 + vec2(t * 0.006, -t * 0.002), 5);
+}
+
+vec3 skyScene(vec2 q, float maskRaw, vec4 flow, float excite, float light, float t) {
+  vec2 ext = uRes / min(uRes.x, uRes.y);
+  float hgt = q.y + ext.y;                           // height above the bottom edge
+  float horizon = exp(-hgt * 2.4);                   // 1 at the bottom, 0 high up
+
+  // The sky turns very slowly about a pole above the top of the view.
+  vec2 pole = vec2(0.35, ext.y + 0.85);
+  vec2 s = rot(t * 0.0011) * (q - pole) + pole;
+
+  // Clear sky: deep blue at the zenith, a warm glow of distant towns low down.
+  vec3 zenith = vec3(0.0012, 0.0017, 0.0040);
+  vec3 low = vec3(0.0085, 0.0074, 0.0070);
+  vec3 sky = mix(zenith, low, horizon);
+
+  float extinction = 1.0 - horizon * 0.75;
+  sky += skyStars(s, excite, t) * extinction;
+
+  // Clouds live in wind space; the parted mask is sampled in the same space,
+  // so a parted hole drifts along with the cloud around it.
+  // A gust carries the cloud itself: sample it where it was blown from.
+  vec2 c = vec2(q.x - uDrift - flow.x, q.y - flow.y) * vec2(0.62, 1.05);
+  float n = cloudField(c, t);
+  float density = smoothstep(0.34, 0.70, n);
+  float det = clamp(flow.w, 0.0, 2.0);
+  float thin = clamp(1.0 - det, 0.0, 1.0);
+  float pile = clamp(det - 1.0, 0.0, 1.0);
+  density = clamp(density * mix(1.0, det, 0.6) + pile * 0.15, 0.0, 1.0);
+  float fine = fbm(c * 4.2 + vec2(-t * 0.010, t * 0.006), 3);
+  float haze = 0.935 + 0.05 * horizon;
+  float veil = 1.0 - (1.0 - haze) * (1.0 - density * 0.995);
+
+  // Parting: thin haze and wisps give way first; thick cloud resists a little.
+  float edgeN = fbm(c * 6.0 + vec2(t * 0.03, -t * 0.02), 3);
+  // With the wind field, cloud opens where a gust has pulled it thin or torn
+  // it; without it, the painted mask parts it as before.
+  float part;
+  if (uFlowOn > 0.5) {
+    // Stretched cloud thins in proportion to the stretch, ragged with its own
+    // texture; only a hard gust tears it clean through.
+    float stretch = thin * (0.75 + 0.55 * (edgeN - 0.5) + 0.45 * (0.5 - n));
+    float torn = smoothstep(0.15, 0.95, flow.z + (edgeN - 0.5) * 0.35 - density * 0.15);
+    part = clamp(max(stretch * 1.15, torn), 0.0, 1.0);
+  } else {
+    float pv = maskRaw * 1.35 - uErode * 0.55 + (edgeN - 0.5) * 0.62 + (0.5 - n) * 0.55 - density * 0.12;
+    part = smoothstep(0.10, 0.85, pv);
+  }
+  if (uFlowOn < 0.5) part *= part * (3.0 - 2.0 * part);
+  float opacity = veil * (1.0 - part);
+
+  // Night cloud is lit from below by sky glow: warmer and brighter low down,
+  // brightest where it is thickest, with a little texture in it.
+  vec3 tint = uPal[3] / max(dot(uPal[3], vec3(0.3333)), 1e-4);
+  vec3 hazeCol = mix(vec3(0.0042, 0.0046, 0.0060), vec3(0.0170, 0.0135, 0.0110), horizon);
+  vec3 cloudCol = mix(vec3(0.0150, 0.0156, 0.0182), vec3(0.0420, 0.0320, 0.0235), horizon);
+  cloudCol *= (0.45 + 0.95 * density + 0.45 * (fine - 0.5)) * (1.0 + pile * 0.25);
+  vec3 overCol = mix(hazeCol, cloudCol, density);
+  overCol = mix(overCol, overCol * tint, 0.35);
+  overCol *= 0.75 + 0.5 * uVeil;
+
+  vec3 col = mix(sky, overCol, opacity);
+
+  // A faint silver lining where the cloud has just been pulled thin.
+  float rim = part * (1.0 - part) * 4.0 * veil;
+  col += overCol * rim * (0.18 + 0.30 * fine);
+
+  // Illumination lights the underside of whatever cloud is left.
+  col += mix(vec3(0.050, 0.047, 0.043), inkRamp(0.82) * 0.06, 0.4) * light * (0.25 + 0.75 * opacity);
+
+  return col;
+}
+
+void main() {
+  vec2 uv = aspect(gl_FragCoord.xy);
+  vec2 pd = uv - uPointer;
+
+  float lens = exp(-dot(pd, pd) * 16.0);
+  vec2 q = uv - pd * lens * (0.052 + 0.020 * uPress);
+
+  // The mask is accumulated in a separate texture, so old marks do not have
+  // to be deleted to make room for new ones. It lives in wind space (shifted
+  // by uDrift) and wraps horizontally, so parted cloud travels with the wind.
+  float maskAspect = uRes.x / max(1.0, uRes.y);
+  vec2 maskExtent = vec2(max(1.0, maskAspect), max(1.0, 1.0 / maskAspect));
+  vec2 maskUv = vec2((q.x - uDrift) / (2.0 * maskExtent.x) + 0.5, clamp(0.5 - q.y / (2.0 * maskExtent.y), 0.001, 0.999));
+  float maskRaw = texture(uMask, maskUv).a;
+
+  float lightSum = 0.0;
+  for (int i = 0; i < 24; i++) {
+    vec4 l = uLights[i];
+    if (l.w <= 0.001) continue;
+    vec2 d = q - l.xy;
+    lightSum += exp(-dot(d, d) / (l.z * l.z) * 1.8) * l.w;
+  }
+  float light = 1.0 - exp(-lightSum * 1.15);
+
+  vec3 col = vec3(0.0);
+  if (uSky < 0.999) col = voidScene(q, maskRaw, lightSum);
+  if (uSky > 0.001) {
+    vec4 flow = vec4(0.0, 0.0, 0.0, 1.0);
+    // How stirred the air is here: live wind speed, plus a little that lingers
+    // while the cloud is still torn or pushed aside. A held finger counts too.
+    float excite = maskRaw * 0.7;
+    if (uFlowOn > 0.5) {
+      vec2 fuv = vec2((q.x - uDrift) / (2.0 * maskExtent.x) + 0.5, q.y / (2.0 * maskExtent.y) + 0.5);
+      flow = texture(uFlow, fuv);
+      float wind = length(texture(uWind, fuv).xy);
+      excite = 1.0 - exp(-(wind * 1.4 + flow.z * 0.6 + length(flow.xy) * 1.0));
+    }
+    excite = clamp(excite + uPress * exp(-dot(pd, pd) * 28.0) * 0.6, 0.0, 1.0);
+    col = mix(col, skyScene(q, maskRaw, flow, excite, light, uTime), uSky);
+  }
+
+  // The pines pass in front of everything in the sky, painted dark included.
+  // Light reaches them: an illuminated stroke turns the needles green.
+  if (uRide > 0.001) {
+    vec4 can = canopy(q, light);
+    col = mix(col, can.rgb, can.a * uRide);
+  }
+
+  // The orb: a small pearl with a little chromatic mischief.
+  float orbCore = exp(-dot(pd, pd) * 1500.0);
+  float orbInner = exp(-dot(pd, pd) * 220.0);
+  float orbHalo = exp(-dot(pd, pd) * 8.0);
+  vec3 orbTint = mix(uPal[4], vec3(1.0, 0.96, 0.89), 0.30);
+  float pulse = 0.90 + 0.12 * sin(uTime * 0.7) + 0.22 * uPress;
+  col += orbTint * (orbCore * 0.85 + orbInner * 0.014 + orbHalo * 0.0011) * pulse;
+  float headGlow = exp(-dot(pd, pd) * 34.0) * uPress;
+  col += orbTint * headGlow * 0.012;
+
+  vec2 highlight = pd - vec2(-0.007, 0.009);
+  col += uPal[4] * exp(-dot(highlight, highlight) * 2400.0) * 0.22;
+
+  vec2 chromaA = pd - vec2(0.006, 0.003);
+  vec2 chromaB = pd + vec2(0.005, 0.004);
+  col.r += exp(-dot(chromaA, chromaA) * 600.0) * 0.012;
+  col.b += exp(-dot(chromaB, chromaB) * 600.0) * 0.011;
+
+  vec2 v = uPointerVel;
+  float vl = length(v);
+  if (vl > 0.002) {
+    vec2 dir = v / max(vl, 1e-4);
+    vec2 tailP = pd - dir * 0.020;
+    col += orbTint * exp(-dot(tailP, tailP) * 180.0) * min(vl, 1.5) * 0.06 * (1.0 - 0.75 * uPress);
+  }
+
+  fragColor = vec4(finish(col, uv), 1.0);
+}`;
+
+      // The wind field under the sky. Two small passes run each frame on a
+      // 256x128 grid laid over the sky in wind space (the same space and wrap
+      // as the mask). The velocity pass carries a gust along, curls it and
+      // lets it die out. The map pass tracks, for every cell, how far the
+      // cloud now there was carried from (rg), how much a hard gust has torn
+      // it (b), and how stretched or bunched it is (a: >1 bunched, <1 thinned).
+      var simCommon = `#version 300 es
+precision highp float;
+out vec4 o;
+uniform vec2 uGrid;
+uniform vec2 uExt;
+uniform float uDt;
+uniform float uTime;
+uniform float uDrift;
+uniform vec4 uSplatA[16];
+uniform vec4 uSplatB[16];
+uniform int uSplats;
+uniform vec4 uLights[24];
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
+             mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+vec2 toScene(vec2 uv) { return vec2((uv.x - 0.5) * 2.0 * uExt.x + uDrift, (uv.y - 0.5) * 2.0 * uExt.y); }
+vec2 wrapD(vec2 d) { float per = 2.0 * uExt.x; d.x -= per * floor(d.x / per + 0.5); return d; }
+vec2 uvDelta(vec2 d) { return d / (2.0 * uExt); }
+
+// A gust is a soft streak stretched along its own direction.
+float splatShape(vec2 x, int i, out vec2 d) {
+  vec4 a = uSplatA[i];
+  vec2 vel = uSplatB[i].xy;
+  d = wrapD(x - a.xy);
+  float r = a.z;
+  float spd = length(vel);
+  if (spd < 1e-4) return exp(-dot(d, d) / (r * r));
+  vec2 dir = vel / spd;
+  float along = dot(d, dir);
+  float perp = dot(d, vec2(-dir.y, dir.x));
+  float l = r * (1.0 + min(spd, 3.0) * 0.9);
+  return exp(-perp * perp / (r * r) - along * along / (l * l));
+}
+
+float calmAt(vec2 x) {
+  float c = 0.0;
+  for (int i = 0; i < 24; i++) {
+    vec4 l = uLights[i];
+    if (l.w <= 0.001) continue;
+    vec2 d = wrapD(x - l.xy);
+    c += exp(-dot(d, d) / (l.z * l.z) * 1.4) * l.w;
+  }
+  return c;
+}
+`;
+
+      var velSource = simCommon + `
+uniform sampler2D uVel;
+void main() {
+  vec2 uv = gl_FragCoord.xy / uGrid;
+  vec2 v = texture(uVel, uv).xy;
+  vec2 bk = uv - uvDelta(v * uDt);
+  vec2 g = 1.0 / uGrid;
+  v = texture(uVel, bk).xy;
+  vec2 nb = texture(uVel, bk + vec2(g.x, 0.0)).xy + texture(uVel, bk - vec2(g.x, 0.0)).xy
+          + texture(uVel, bk + vec2(0.0, g.y)).xy + texture(uVel, bk - vec2(0.0, g.y)).xy;
+  v = mix(v, nb * 0.25, 0.30);
+
+  // Eddies: a slowly changing curl noise, felt only where air is moving.
+  vec2 w = (uv - 0.5) * 2.0 * uExt;
+  float e = 0.03;
+  vec2 np = w * 2.6 + vec2(uTime * 0.11, -uTime * 0.07);
+  float nU = vnoise(np + vec2(0.0, e * 2.6));
+  float nD = vnoise(np - vec2(0.0, e * 2.6));
+  float nR = vnoise(np + vec2(e * 2.6, 0.0));
+  float nL = vnoise(np - vec2(e * 2.6, 0.0));
+  vec2 curl = vec2(nU - nD, -(nR - nL)) / (2.0 * e);
+  v += curl * length(v) * 0.22 * uDt;
+
+  vec2 x = toScene(uv);
+  for (int i = 0; i < 16; i++) {
+    if (i >= uSplats) break;
+    vec2 d;
+    float sh = splatShape(x, i, d) * uSplatA[i].w;
+    vec2 vel = uSplatB[i].xy;
+    float spd = length(vel);
+    // The air is pushed along the stroke and spills out to either side,
+    // which is what pulls the cloud thin behind it.
+    vec2 radial = d / max(length(d), 1e-4);
+    vec2 side = radial;
+    if (spd > 1e-4) {
+      vec2 nrm = vec2(-vel.y, vel.x) / spd;
+      side = nrm * sign(dot(d, nrm)) * smoothstep(0.0, uSplatA[i].z * 0.6, abs(dot(d, nrm)));
+    }
+    vec2 target = vel * 1.0 + side * spd * 0.16 + radial * uSplatB[i].z;
+    v = mix(v, target, clamp(sh, 0.0, 1.0));
+  }
+
+  float calm = calmAt(x);
+  v *= exp(-uDt * (1.15 + calm * 6.0));
+  float sp = length(v);
+  if (sp > 4.0) v *= 4.0 / sp;
+  o = vec4(v, 0.0, 1.0);
+}`;
+
+      var mapSource = simCommon + `
+uniform sampler2D uVel;
+uniform sampler2D uMap;
+uniform float uRelax;
+void main() {
+  vec2 uv = gl_FragCoord.xy / uGrid;
+  vec2 v = texture(uVel, uv).xy;
+  vec2 bk = uv - uvDelta(v * uDt);
+  vec2 g = 1.0 / uGrid;
+  vec4 m = texture(uMap, bk);
+  vec2 nb = texture(uMap, bk + vec2(g.x, 0.0)).xy + texture(uMap, bk - vec2(g.x, 0.0)).xy
+          + texture(uMap, bk + vec2(0.0, g.y)).xy + texture(uMap, bk - vec2(0.0, g.y)).xy;
+  vec2 disp = mix(m.xy, nb * 0.25, 0.12) + v * uDt;
+  float tear = m.z;
+
+  vec2 x = toScene(uv);
+  for (int i = 0; i < 16; i++) {
+    if (i >= uSplats) break;
+    vec2 d;
+    float sh = splatShape(x, i, d) * uSplatA[i].w;
+    float spd = length(uSplatB[i].xy);
+    tear += sh * (smoothstep(1.2, 3.6, spd) * 0.16 + uSplatB[i].z * 0.12);
+  }
+
+  float calm = calmAt(x);
+  disp *= exp(-uDt * (1.0 / uRelax + calm * 1.6));
+  tear *= exp(-uDt * (1.0 / (uRelax * 0.55) + calm * 3.0));
+  float dl = length(disp);
+  if (dl > 0.55) disp *= 0.55 / dl;
+
+  // Stretch: area the cloud here came from, per unit area now.
+  vec2 tx = vec2(1.0 / uGrid.x, 0.0);
+  vec2 ty = vec2(0.0, 1.0 / uGrid.y);
+  vec2 hx = vec2(4.0 * uExt.x / uGrid.x);
+  vec2 hy = vec2(4.0 * uExt.y / uGrid.y);
+  vec2 ddx = (texture(uMap, uv + tx).xy - texture(uMap, uv - tx).xy) / hx;
+  vec2 ddy = (texture(uMap, uv + ty).xy - texture(uMap, uv - ty).xy) / hy;
+  float det = (1.0 - ddx.x) * (1.0 - ddy.y) - ddy.x * ddx.y;
+
+  o = vec4(disp, clamp(tear, 0.0, 1.0), clamp(det, -1.0, 3.0));
+}`;
+
+      var particleVertexSource = `#version 300 es
+in vec2 aPos;
+in float aSize;
+in float aBright;
+uniform vec2 uRes;
+out float vBright;
+out float vTint;
+void main() {
+  gl_Position = vec4(aPos * 2.0 - 1.0, 0.0, 1.0);
+  gl_PointSize = max(1.5, aSize * uRes.y);
+  vBright = aBright;
+  vTint = fract(aSize * 317.0);
+}`;
+
+      var particleFragmentSource = `#version 300 es
+precision highp float;
+in float vBright;
+in float vTint;
+uniform vec3 uPal[5];
+uniform float uDim;
+out vec4 fragColor;
+void main() {
+  vec2 d = gl_PointCoord - 0.5;
+  float a = smoothstep(0.5, 0.0, length(d));
+  a = a * (0.65 + 0.35 * a);
+  vec3 c = mix(uPal[3], uPal[4], vTint * 0.65);
+  fragColor = vec4(c, a * vBright * uDim);
+}`;
+
+function VoidAudio() {
+  this.supported = !!(window.AudioContext || window.webkitAudioContext);
+  this.ctx = null;
+  this.built = false;
+  this.enabled = false;
+  this.wanted = false;
+  this.master = null;
+  this.comp = null;
+  this.space = null;
+  this.fx = null;
+  this.brushBus = null;
+  this.baseFilter = null;
+  this.baseGain = null;
+  this.grainBuffer = null;
+  this.brownBuffer = null;
+  this.moodCutoff = 340;
+  this.speed = 0;
+  this.press = 0;
+  this.dark = 0;
+  this.light = 0;
+  this.pan = 0;
+  this.mode = 'dark';
+  this.nextGrain = 0;
+  this.lastDust = 0;
+  this.lastAperture = 0;
+  this._suspendTimer = null;
+}
+
+VoidAudio.prototype.setEnabled = async function (on) {
+  this.wanted = on;
+  if (!this.supported) return false;
+
+  if (on) {
+    if (!this.built && !this._build()) return false;
+    if (!this.ctx || !this.master) return false;
+    clearTimeout(this._suspendTimer);
+    if (this.ctx.state !== 'running') {
+      try { await this.ctx.resume(); } catch (e) { return false; }
+    }
+    this.enabled = this.ctx.state === 'running';
+    if (!this.enabled) return false;
+    var now = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(now);
+    this.master.gain.setValueAtTime(Math.max(0.0001, this.master.gain.value), now);
+    this.master.gain.exponentialRampToValueAtTime(0.20, now + 2.2);
+    if (this.baseFilter) this.baseFilter.frequency.setTargetAtTime(this.moodCutoff, now, 1.2);
+    return true;
+  }
+
+  this.enabled = false;
+  if (!this.ctx || !this.master) return true;
+  var t = this.ctx.currentTime;
+  this.master.gain.cancelScheduledValues(t);
+  this.master.gain.setValueAtTime(Math.max(0.0001, this.master.gain.value), t);
+  this.master.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+  clearTimeout(this._suspendTimer);
+  this._suspendTimer = setTimeout(() => {
+    if (this.ctx && !this.enabled && this.ctx.state === 'running') {
+      this.ctx.suspend().catch(() => {});
+    }
+  }, 1100);
+  return true;
+};
+
+VoidAudio.prototype.setMood = function (id) {
+  var map = { ash: 340, pearl: 430, dusk: 300, moss: 390, ember: 280 };
+  this.moodCutoff = map[id] || 340;
+  if (this.ctx && this.baseFilter) {
+    this.baseFilter.frequency.setTargetAtTime(this.moodCutoff, this.ctx.currentTime, 1.4);
+  }
+};
+
+VoidAudio.prototype.update = function (dt, m) {
+  if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
+  var k = Math.min(1, dt * 8);
+  this.speed += (m.speed - this.speed) * k;
+  this.press += (m.press - this.press) * k;
+  this.dark += (m.dark - this.dark) * k;
+  this.light += (m.light - this.light) * k;
+  this.pan += (m.pan - this.pan) * k;
+  this.mode = m.mode || 'dark';
+
+  var now = this.ctx.currentTime;
+  if (this.baseFilter) {
+    var cutoff = this.moodCutoff + this.light * 55 - this.dark * 28;
+    this.baseFilter.frequency.setTargetAtTime(cutoff, now, 0.8);
+  }
+
+  var painting = m.active && m.painting;
+  var darkBrushTarget = 0;
+  var lightBrushTarget = 0;
+  if (painting) {
+    if (this.mode === 'light') {
+      lightBrushTarget = 0.075 * (0.45 + 0.55 * this.speed) * (0.5 + 0.5 * this.light);
+    } else {
+      darkBrushTarget = 0.085 * (0.45 + 0.55 * this.speed) * (0.5 + 0.5 * this.dark);
+    }
+  } else if (m.active) {
+    if (this.mode === 'light') lightBrushTarget = 0.016;
+    else darkBrushTarget = 0.018;
+  }
+  if (this.darkBrushGain) this.darkBrushGain.gain.setTargetAtTime(darkBrushTarget, now, 0.08);
+  if (this.lightBrushGain) this.lightBrushGain.gain.setTargetAtTime(lightBrushTarget, now, 0.08);
+  if (this.darkBrushFilter) this.darkBrushFilter.frequency.setTargetAtTime(420 + this.dark * 650 + this.speed * 350, now, 0.08);
+  if (this.lightBrushFilter) this.lightBrushFilter.frequency.setTargetAtTime(1200 + this.light * 1650 + this.speed * 500, now, 0.08);
+  if (this.brushPanNode && this.brushPanNode.pan) this.brushPanNode.pan.setTargetAtTime(this.pan, now, 0.10);
+
+  var active = m.active && (m.painting || this.speed > 0.14);
+  if (!active) {
+    this.nextGrain = Math.max(this.nextGrain, now + 0.08);
+    return;
+  }
+
+  var rate = this.mode === 'light'
+    ? 4 + 20 * this.speed + 10 * this.light
+    : 3 + 18 * this.speed + 10 * this.dark;
+  rate = Math.min(26, rate);
+  if (this.nextGrain < now - 0.18) this.nextGrain = now + 0.02;
+
+  var ahead = now + 0.12;
+  var guard = 0;
+  while (this.nextGrain < ahead && guard++ < 8) {
+    this._grain(this.nextGrain, this.mode);
+    this.nextGrain += (1 / Math.max(0.5, rate)) * (0.75 + Math.random() * 0.5);
+  }
+};
+
+VoidAudio.prototype.contact = function (kind, pan, strength) {
+  if (!this.enabled || !this.ctx || !this.master) return;
+  var now = this.ctx.currentTime;
+  var ctx = this.ctx;
+  var light = kind === 'light';
+  var start = now + 0.01;
+  var dur = 0.22;
+  var src = ctx.createBufferSource();
+  src.buffer = this.grainBuffer;
+  src.playbackRate.value = light ? 1.05 : 0.9;
+  var band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.Q.value = light ? 1.8 : 0.9;
+  band.frequency.setValueAtTime(light ? 1400 : 620, start);
+  band.frequency.exponentialRampToValueAtTime(light ? 2600 : 260, start + 0.16);
+  var g = ctx.createGain();
+  var p = this._pan(pan);
+  var peak = (light ? 0.038 : 0.058) * (0.5 + strength * 0.5);
+  g.gain.setValueAtTime(0.0001, start);
+  g.gain.exponentialRampToValueAtTime(peak, start + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+  src.connect(band);
+  band.connect(g);
+  g.connect(p);
+  p.connect(this.fx);
+  src.start(start, Math.random() * 1.2, dur);
+  src.stop(start + dur + 0.01);
+};
+
+VoidAudio.prototype.aperture = function (kind, pan, strength) {
+  if (!this.enabled || !this.ctx || !this.master) return;
+  var now = this.ctx.currentTime;
+  if (now - this.lastAperture < 0.12) return;
+  this.lastAperture = now;
+  var ctx = this.ctx;
+  var dark = kind !== 'light';
+  var start = now + 0.015;
+  var dur = dark ? 1.35 : 1.05;
+  var src = ctx.createBufferSource();
+  src.buffer = this.grainBuffer;
+  src.playbackRate.value = dark ? 0.85 : 1.0;
+  var band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.Q.value = dark ? 0.85 : 2.1;
+  var g = ctx.createGain();
+  var p = this._pan(pan);
+  var peak = (dark ? 0.080 : 0.042) * (0.5 + strength * 0.5);
+  g.gain.setValueAtTime(0.0001, start);
+  g.gain.exponentialRampToValueAtTime(peak, start + (dark ? 0.045 : 0.025));
+  g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+  if (dark) {
+    band.frequency.setValueAtTime(520, start);
+    band.frequency.exponentialRampToValueAtTime(125, start + 1.05);
+  } else {
+    band.frequency.setValueAtTime(640, start);
+    band.frequency.exponentialRampToValueAtTime(2600, start + 0.75);
+  }
+  src.connect(band);
+  band.connect(g);
+  g.connect(p);
+  p.connect(this.fx);
+  var offset = Math.random() * Math.max(0.01, this.grainBuffer.duration - dur - 0.05);
+  src.start(start, offset, dur);
+  src.stop(start + dur + 0.02);
+
+  if (dark) {
+    var body = ctx.createOscillator();
+    var bg = ctx.createGain();
+    body.type = 'sine';
+    body.frequency.value = 68;
+    bg.gain.setValueAtTime(0.0001, start);
+    bg.gain.exponentialRampToValueAtTime(0.020 * strength, start + 0.03);
+    bg.gain.exponentialRampToValueAtTime(0.0001, start + 0.85);
+    body.connect(bg);
+    bg.connect(p);
+    body.start(start);
+    body.stop(start + 0.9);
+  }
+};
+
+VoidAudio.prototype.dust = function (pan, force, bright) {
+  if (!this.enabled || !this.ctx || !this.master) return;
+  var now = this.ctx.currentTime;
+  if (now - this.lastDust < 0.065) return;
+  this.lastDust = now;
+  var count = 1 + ((Math.random() * 2) | 0);
+  var ctx = this.ctx;
+  for (var i = 0; i < count; i++) {
+    var start = now + 0.01 + Math.random() * 0.035;
+    var dur = 0.018 + Math.random() * 0.04;
+    var src = ctx.createBufferSource();
+    src.buffer = this.grainBuffer;
+    src.playbackRate.value = 0.9 + Math.random() * 0.3;
+    var band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 2.2;
+    band.frequency.value = bright
+      ? 1700 + Math.random() * 2300
+      : 750 + Math.random() * 1200;
+    var g = ctx.createGain();
+    var amp = (0.0050 + Math.random() * 0.0070) * (0.5 + Math.min(1, force) * 0.5);
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(amp, start + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    var p = this._pan(pan + (Math.random() - 0.5) * 0.8);
+    src.connect(band);
+    band.connect(g);
+    g.connect(p);
+    p.connect(this.fx);
+    src.start(start, Math.random() * 1.4, dur);
+    src.stop(start + dur + 0.01);
+  }
+};
+
+VoidAudio.prototype.suspend = function () {
+  if (this.ctx && this.ctx.state === 'running') this.ctx.suspend().catch(() => {});
+};
+
+VoidAudio.prototype.resume = function () {
+  if (this.enabled && this.ctx && this.ctx.state === 'suspended') {
+    this.ctx.resume().catch(() => {});
+  }
+};
+
+VoidAudio.prototype._grain = function (now, mode) {
+  var ctx = this.ctx;
+  var light = mode === 'light';
+  var dur = light ? 0.028 + Math.random() * 0.042 : 0.05 + Math.random() * 0.06;
+  var start = now + Math.random() * 0.012;
+  var src = ctx.createBufferSource();
+  src.buffer = this.grainBuffer;
+  src.playbackRate.value = 0.9 + Math.random() * 0.25;
+
+  var band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.Q.value = light ? 1.6 : 0.8;
+  band.frequency.value = light
+    ? 850 + this.light * 1450 + this.speed * 380 + Math.random() * 280
+    : 230 + this.dark * 620 + this.speed * 240 + Math.random() * 150;
+
+  var g = ctx.createGain();
+  var peak = light
+    ? 0.0100 * (0.45 + 0.55 * this.light) * (0.5 + 0.5 * this.speed)
+    : 0.0180 * (0.4 + 0.6 * this.dark) * (0.4 + 0.6 * this.speed);
+  g.gain.setValueAtTime(0.0001, start);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), start + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+
+  var p = this._pan(this.pan + (Math.random() - 0.5) * 0.28);
+  src.connect(band);
+  band.connect(g);
+  g.connect(p);
+  p.connect(this.brushBus);
+  var offset = Math.random() * Math.max(0.01, this.grainBuffer.duration - dur - 0.02);
+  src.start(start, offset, dur);
+  src.stop(start + dur + 0.02);
+};
+
+VoidAudio.prototype._pan = function (v) {
+  if (this.ctx.createStereoPanner) {
+    var p = this.ctx.createStereoPanner();
+    p.pan.value = Math.max(-1, Math.min(1, v));
+    return p;
+  }
+  return this.ctx.createGain();
+};
+
+VoidAudio.prototype._build = function () {
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) { this.supported = false; return false; }
+  var ctx;
+  try { ctx = new AC(); } catch (e) { this.supported = false; return false; }
+  this.ctx = ctx;
+  this.built = true;
+
+  var master = ctx.createGain();
+  master.gain.value = 0.0001;
+  var comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -22;
+  comp.knee.value = 20;
+  comp.ratio.value = 4;
+  comp.attack.value = 0.01;
+  comp.release.value = 0.5;
+  master.connect(comp);
+  comp.connect(ctx.destination);
+  this.master = master;
+  this.comp = comp;
+
+  var convolver = ctx.createConvolver();
+  convolver.buffer = this._impulse(2.8, 2.2);
+  var wet = ctx.createGain();
+  wet.gain.value = 0.20;
+  convolver.connect(wet);
+  wet.connect(master);
+  var space = ctx.createGain();
+  space.gain.value = 0.75;
+  space.connect(convolver);
+  this.space = space;
+
+  var fx = ctx.createGain();
+  fx.gain.value = 0.72;
+  fx.connect(master);
+  fx.connect(space);
+  this.fx = fx;
+
+  var brushBus = ctx.createGain();
+  brushBus.gain.value = 0.55;
+  brushBus.connect(master);
+  var brushSpace = ctx.createGain();
+  brushSpace.gain.value = 0.07;
+  brushBus.connect(brushSpace);
+  brushSpace.connect(space);
+  this.brushBus = brushBus;
+
+  var brushSource = ctx.createBufferSource();
+  brushSource.buffer = this._noise(6);
+  brushSource.loop = true;
+  var darkBrushFilter = ctx.createBiquadFilter();
+  darkBrushFilter.type = 'bandpass';
+  darkBrushFilter.frequency.value = 520;
+  darkBrushFilter.Q.value = 0.8;
+  var lightBrushFilter = ctx.createBiquadFilter();
+  lightBrushFilter.type = 'bandpass';
+  lightBrushFilter.frequency.value = 1650;
+  lightBrushFilter.Q.value = 1.15;
+  var darkBrushGain = ctx.createGain();
+  darkBrushGain.gain.value = 0;
+  var lightBrushGain = ctx.createGain();
+  lightBrushGain.gain.value = 0;
+  var brushPan = this._pan(0);
+  brushSource.connect(darkBrushFilter);
+  darkBrushFilter.connect(darkBrushGain);
+  darkBrushGain.connect(brushPan);
+  brushSource.connect(lightBrushFilter);
+  lightBrushFilter.connect(lightBrushGain);
+  lightBrushGain.connect(brushPan);
+  brushPan.connect(brushBus);
+  brushSource.start();
+  this.darkBrushFilter = darkBrushFilter;
+  this.lightBrushFilter = lightBrushFilter;
+  this.darkBrushGain = darkBrushGain;
+  this.lightBrushGain = lightBrushGain;
+  this.brushPanNode = brushPan;
+
+  this.grainBuffer = this._noise(1.8);
+  this.brownBuffer = this._brown(14);
+
+  var src = ctx.createBufferSource();
+  src.buffer = this.brownBuffer;
+  src.loop = true;
+  var hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 25;
+  hp.Q.value = 0.5;
+  var lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = this.moodCutoff;
+  lp.Q.value = 0.55;
+  var base = ctx.createGain();
+  base.gain.value = 0.11;
+  src.connect(hp);
+  hp.connect(lp);
+  lp.connect(base);
+  base.connect(master);
+  this.baseFilter = lp;
+  this.baseGain = base;
+  src.start();
+
+  var filterLfo = ctx.createOscillator();
+  filterLfo.type = 'sine';
+  filterLfo.frequency.value = 0.031;
+  var filterLfoGain = ctx.createGain();
+  filterLfoGain.gain.value = 62;
+  filterLfo.connect(filterLfoGain);
+  filterLfoGain.connect(lp.frequency);
+  filterLfo.start();
+
+  var gainLfo = ctx.createOscillator();
+  gainLfo.type = 'sine';
+  gainLfo.frequency.value = 0.021;
+  var gainLfoGain = ctx.createGain();
+  gainLfoGain.gain.value = 0.010;
+  gainLfo.connect(gainLfoGain);
+  gainLfoGain.connect(base.gain);
+  gainLfo.start();
+
+  return true;
+};
+
+VoidAudio.prototype._noise = function (seconds) {
+  var ctx = this.ctx;
+  var rate = ctx.sampleRate;
+  var len = Math.floor(rate * seconds);
+  var buf = ctx.createBuffer(2, len, rate);
+  for (var ch = 0; ch < 2; ch++) {
+    var d = buf.getChannelData(ch);
+    var max = 0;
+    for (var i = 0; i < len; i++) {
+      d[i] = Math.random() * 2 - 1;
+      if (Math.abs(d[i]) > max) max = Math.abs(d[i]);
+    }
+    var norm = 0.55 / Math.max(0.0001, max);
+    for (var j = 0; j < len; j++) d[j] *= norm;
+  }
+  return buf;
+};
+
+VoidAudio.prototype._brown = function (seconds) {
+  var ctx = this.ctx;
+  var rate = ctx.sampleRate;
+  var len = Math.floor(rate * seconds);
+  var fade = Math.floor(rate * 0.03);
+  var buf = ctx.createBuffer(2, len, rate);
+  for (var ch = 0; ch < 2; ch++) {
+    var d = buf.getChannelData(ch);
+    var last = 0;
+    var max = 0;
+    for (var i = 0; i < len; i++) {
+      var white = Math.random() * 2 - 1;
+      last = (last + 0.02 * white) / 1.02;
+      d[i] = last * 3.5;
+      if (Math.abs(d[i]) > max) max = Math.abs(d[i]);
+    }
+    var norm = 0.62 / Math.max(0.0001, max);
+    for (var j = 0; j < len; j++) {
+      d[j] *= norm;
+      if (j < fade) d[j] *= j / fade;
+      if (j > len - fade) d[j] *= (len - j) / fade;
+    }
+  }
+  return buf;
+};
+
+VoidAudio.prototype._impulse = function (seconds, decay) {
+  var ctx = this.ctx;
+  var rate = ctx.sampleRate;
+  var len = Math.floor(rate * seconds);
+  var buf = ctx.createBuffer(2, len, rate);
+  for (var ch = 0; ch < 2; ch++) {
+    var d = buf.getChannelData(ch);
+    for (var i = 0; i < len; i++) {
+      var t = i / len;
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay) * 0.32;
+    }
+  }
+  return buf;
+};
+
+
+      function showFallback() {
+        fallback.classList.add('is-open');
+      }
+
+      function compile(type, source) {
+        var shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          var log = gl.getShaderInfoLog(shader);
+          gl.deleteShader(shader);
+          throw new Error(log || 'shader error');
+        }
+        return shader;
+      }
+
+      var program;
+      try {
+        var vs = compile(gl.VERTEX_SHADER, vertexSource);
+        var fs = compile(gl.FRAGMENT_SHADER, fragmentSource);
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          throw new Error(gl.getProgramInfoLog(program) || 'link error');
+        }
+      } catch (err) {
+        if (window.console) console.error(err);
+        showFallback();
+        return;
+      }
+
+      particleProgram = null;
+      try {
+        var pvs = compile(gl.VERTEX_SHADER, particleVertexSource);
+        var pfs = compile(gl.FRAGMENT_SHADER, particleFragmentSource);
+        particleProgram = gl.createProgram();
+        gl.attachShader(particleProgram, pvs);
+        gl.attachShader(particleProgram, pfs);
+        gl.linkProgram(particleProgram);
+        gl.deleteShader(pvs);
+        gl.deleteShader(pfs);
+        if (!gl.getProgramParameter(particleProgram, gl.LINK_STATUS)) {
+          throw new Error(gl.getProgramInfoLog(particleProgram) || 'particle link error');
+        }
+        particleAttribs.pos = gl.getAttribLocation(particleProgram, 'aPos');
+        particleAttribs.size = gl.getAttribLocation(particleProgram, 'aSize');
+        particleAttribs.bright = gl.getAttribLocation(particleProgram, 'aBright');
+        particleUniforms.res = gl.getUniformLocation(particleProgram, 'uRes');
+        particleUniforms.pal = gl.getUniformLocation(particleProgram, 'uPal');
+        particleUniforms.dim = gl.getUniformLocation(particleProgram, 'uDim');
+      } catch (err) {
+        if (window.console) console.warn(err);
+        particleProgram = null;
+      }
+
+      var vao = gl.createVertexArray();
+      gl.bindVertexArray(vao);
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.BLEND);
+
+      if (particleProgram) {
+        particleVao = gl.createVertexArray();
+        gl.bindVertexArray(particleVao);
+        particleBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, particleData, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(particleAttribs.pos);
+        gl.vertexAttribPointer(particleAttribs.pos, 2, gl.FLOAT, false, 16, 0);
+        gl.enableVertexAttribArray(particleAttribs.size);
+        gl.vertexAttribPointer(particleAttribs.size, 1, gl.FLOAT, false, 16, 8);
+        gl.enableVertexAttribArray(particleAttribs.bright);
+        gl.vertexAttribPointer(particleAttribs.bright, 1, gl.FLOAT, false, 16, 12);
+        gl.bindVertexArray(vao);
+        initParticles();
+      }
+
+      // The wind field needs float render targets; without them the sky
+      // falls back to parting cloud with the painted mask.
+      var FLOW_W = 256;
+      var FLOW_H = 128;
+      var flowOK = false;
+      var flow = null;
+      try {
+        if (gl.getExtension('EXT_color_buffer_float')) flow = initFlow();
+        flowOK = !!flow;
+      } catch (err) {
+        if (window.console) console.warn(err);
+        flowOK = false;
+      }
+
+      function initFlow() {
+        function prog(src) {
+          var a = compile(gl.VERTEX_SHADER, vertexSource);
+          var b = compile(gl.FRAGMENT_SHADER, src);
+          var pr = gl.createProgram();
+          gl.attachShader(pr, a);
+          gl.attachShader(pr, b);
+          gl.linkProgram(pr);
+          gl.deleteShader(a);
+          gl.deleteShader(b);
+          if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr) || 'flow link error');
+          var names = ['uGrid', 'uExt', 'uDt', 'uTime', 'uDrift', 'uSplatA', 'uSplatB', 'uSplats', 'uLights', 'uVel', 'uMap', 'uRelax'];
+          var u = {};
+          names.forEach(function (n) { u[n] = gl.getUniformLocation(pr, n); });
+          return { p: pr, u: u };
+        }
+        function target(clearA) {
+          var tex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, FLOW_W, FLOW_H, 0, gl.RGBA, gl.HALF_FLOAT, null);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          var fb = gl.createFramebuffer();
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+          if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('flow target incomplete');
+          gl.clearColor(0, 0, 0, clearA);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          return { tex: tex, fb: fb };
+        }
+        var f = {
+          vel: prog(velSource),
+          map: prog(mapSource),
+          v: [target(0), target(0)],
+          m: [target(1), target(1)],
+          cur: 0
+        };
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.clearColor(0, 0, 0, 1);
+        return f;
+      }
+
+      var uniforms = {
+        res: gl.getUniformLocation(program, 'uRes'),
+        time: gl.getUniformLocation(program, 'uTime'),
+        pointer: gl.getUniformLocation(program, 'uPointer'),
+        pointerVel: gl.getUniformLocation(program, 'uPointerVel'),
+        press: gl.getUniformLocation(program, 'uPress'),
+        pal: gl.getUniformLocation(program, 'uPal'),
+        marks: gl.getUniformLocation(program, 'uMarks'),
+        mask: gl.getUniformLocation(program, 'uMask'),
+        shocks: gl.getUniformLocation(program, 'uShocks'),
+        veil: gl.getUniformLocation(program, 'uVeil'),
+        lights: gl.getUniformLocation(program, 'uLights'),
+        ink: gl.getUniformLocation(program, 'uInk'),
+        inkCurve: gl.getUniformLocation(program, 'uInkCurve'),
+        erode: gl.getUniformLocation(program, 'uErode'),
+        ride: gl.getUniformLocation(program, 'uRide'),
+        travel: gl.getUniformLocation(program, 'uTravel'),
+        pines: gl.getUniformLocation(program, 'uPines'),
+        sky: gl.getUniformLocation(program, 'uSky'),
+        drift: gl.getUniformLocation(program, 'uDrift'),
+        flow: gl.getUniformLocation(program, 'uFlow'),
+        flowOn: gl.getUniformLocation(program, 'uFlowOn'),
+        wind: gl.getUniformLocation(program, 'uWind')
+      };
+
+      var markData = new Float32Array(MAX_MARKS * 4);
+      var paletteLinear = new Float32Array(15);
+      var marks = [];
+      var moodIndex = 0;
+      var paletteFrom;
+      var paletteTo;
+      var paletteMix = 1;
+      var hasMoved = false;
+      var lastActivity = performance.now() - 12000;
+      var pointer = { x: 0, y: 0 };
+      var previousPointer = { x: 0, y: 0 };
+      var user = { x: 0, y: 0 };
+      var pointerVel = { x: 0, y: 0 };
+      var press = 0;
+      var pressTarget = 0;
+      var active = new Map();
+      var down = null;
+      var painting = false;
+      var lastPaint = null;
+      var lastPaintAt = 0;
+      var lightMode = false;
+      var pendingTapBloom = 0;
+      var pendingTapKind = 'dark';
+      var lastTapAt = 0;
+      var lastTapX = 0;
+      var lastTapY = 0;
+      var TAP_MS = 360;
+      var TAP_BLOOM_MS = 380;
+      var time = 28 + Math.random() * 26;
+      var nextPulse = time + 7 + Math.random() * 5;
+      var stillMode = false;
+      var last = 0;
+      var running = true;
+      var raf = 0;
+      var hintTimer = 0;
+      var engaged = false;
+
+      function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+      function smoothstep(a, b, x) {
+        var t = clamp((x - a) / (b - a), 0, 1);
+        return t * t * (3 - 2 * t);
+      }
+
+      function ease(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+
+      function hexToRgb(hex) {
+        var n = parseInt(hex.replace('#', ''), 16);
+        return {
+          r: ((n >> 16) & 255) / 255,
+          g: ((n >> 8) & 255) / 255,
+          b: (n & 255) / 255
+        };
+      }
+
+      function linear(c) {
+        return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      }
+
+      function currentColors() {
+        var t = ease(clamp(paletteMix, 0, 1));
+        return paletteTo.map(function (to, i) {
+          var from = paletteFrom[i];
+          return {
+            r: from.r + (to.r - from.r) * t,
+            g: from.g + (to.g - from.g) * t,
+            b: from.b + (to.b - from.b) * t
+          };
+        });
+      }
+
+      function writePalette() {
+        var colors = currentColors();
+        for (var i = 0; i < 5; i++) {
+          paletteLinear[i * 3] = linear(colors[i].r);
+          paletteLinear[i * 3 + 1] = linear(colors[i].g);
+          paletteLinear[i * 3 + 2] = linear(colors[i].b);
+        }
+        gl.useProgram(program);
+        gl.uniform3fv(uniforms.pal, paletteLinear);
+      }
+
+      function setMood(index, instant) {
+        moodIndex = (index + MOODS.length) % MOODS.length;
+        var mood = MOODS[moodIndex];
+        paletteFrom = currentColors();
+        paletteTo = mood.colors.map(hexToRgb);
+        paletteMix = instant ? 1 : 0;
+        moodName.textContent = mood.id;
+        moodButton.setAttribute('aria-label', 'mood: ' + mood.id + ' â€” change the mood');
+        moodDot.style.background = 'linear-gradient(140deg, ' + mood.colors[0] + ', ' + mood.colors[2] + ' 56%, ' + mood.colors[4] + ')';
+        writePalette();
+        audio.setMood(mood.id);
+        try { localStorage.setItem('opal.void.mood', mood.id); } catch (e) { /* private */ }
+      }
+
+      function setMoodFromStore() {
+        var saved = '';
+        try { saved = localStorage.getItem('opal.void.mood') || ''; } catch (e) { /* private */ }
+        var index = 0;
+        for (var i = 0; i < MOODS.length; i++) if (MOODS[i].id === saved) index = i;
+        var mood = MOODS[index];
+        moodIndex = index;
+        paletteFrom = mood.colors.map(hexToRgb);
+        paletteTo = mood.colors.map(hexToRgb);
+        paletteMix = 1;
+        moodName.textContent = mood.id;
+        moodButton.setAttribute('aria-label', 'mood: ' + mood.id + ' â€” change the mood');
+        moodDot.style.background = 'linear-gradient(140deg, ' + mood.colors[0] + ', ' + mood.colors[2] + ' 56%, ' + mood.colors[4] + ')';
+        writePalette();
+        audio.setMood(mood.id);
+      }
+
+      function scenePan(x) {
+        var aspect = canvas.width / Math.max(1, canvas.height);
+        return clamp(x / Math.max(0.001, aspect), -1, 1);
+      }
+
+      function reflectSound() {
+        var on = audio.wanted || audio.enabled;
+        soundButton.setAttribute('aria-pressed', on ? 'true' : 'false');
+        soundButton.setAttribute('aria-label', 'sound: ' + (on ? 'on' : 'off'));
+        soundButton.title = on ? 'sound on (S)' : 'sound off (S)';
+      }
+
+      function unlockAudio() {
+        if (audio.supported && audio.wanted && !audio.enabled) {
+          audio.setEnabled(true).then(function (ok) {
+            if (!ok) { audio.wanted = false; reflectSound(); }
+            else reflectSound();
+          }).catch(function () {
+            audio.wanted = false;
+            reflectSound();
+          });
+        }
+      }
+
+      function setSound(on) {
+        audio.wanted = on;
+        try { localStorage.setItem('opal.void.sound', on ? 'on' : 'off'); } catch (e) { /* private */ }
+        if (!audio.supported) {
+          audio.wanted = false;
+          soundButton.disabled = true;
+          soundButton.title = 'sound unavailable';
+          reflectSound();
+          return;
+        }
+        reflectSound();
+        if (on) {
+          audio.setEnabled(true).then(function (ok) {
+            if (!ok) {
+              audio.wanted = false;
+              reflectSound();
+              soundButton.disabled = true;
+              soundButton.title = 'sound unavailable';
+            }
+          }).catch(function () {
+            audio.wanted = false;
+            reflectSound();
+            soundButton.disabled = true;
+            soundButton.title = 'sound unavailable';
+          });
+        } else {
+          audio.setEnabled(false).catch(function () {});
+        }
+      }
+
+      function toScene(clientX, clientY) {
+        var r = canvas.getBoundingClientRect();
+        var w = Math.max(1, r.width);
+        var h = Math.max(1, r.height);
+        var m = Math.min(w, h);
+        return {
+          x: ((clientX - r.left) / w * 2 - 1) * (w / m),
+          y: (1 - (clientY - r.top) / h * 2) * (h / m)
+        };
+      }
+
+      function autoTarget() {
+        var r = canvas.getBoundingClientRect();
+        var w = Math.max(1, r.width);
+        var h = Math.max(1, r.height);
+        var m = Math.min(w, h);
+        var nx = 0.5 + 0.27 * Math.cos(time * 0.085) * Math.cos(time * 0.037);
+        var ny = 0.5 + 0.23 * Math.sin(time * 0.071 + 0.7);
+        return {
+          x: (nx * 2 - 1) * (w / m),
+          y: (1 - ny * 2) * (h / m)
+        };
+      }
+
+      function flowAt(x, y, t) {
+        return {
+          x: Math.sin(y * 1.6 + t * 0.10) + 0.45 * Math.cos((x + y) * 1.3 - t * 0.07),
+          y: Math.cos(x * 1.4 - t * 0.08) + 0.45 * Math.sin((x - y) * 1.7 + t * 0.06)
+        };
+      }
+
+
+      function stampMask(x, y, radius, strength, erase) {
+        if (!maskCtx) return;
+        var aspect = canvas.width / Math.max(1, canvas.height);
+        var extX = Math.max(1, aspect);
+        var extY = Math.max(1, 1 / aspect);
+        // Stamp in wind space; the texture wraps horizontally, so a stamp
+        // near a seam is drawn on both sides of it.
+        var mx = ((x - drift) / (2 * extX) + 0.5) * MASK_W;
+        mx = ((mx % MASK_W) + MASK_W) % MASK_W;
+        var my = (0.5 - y / (2 * extY)) * MASK_H;
+        var rx = Math.max(2, radius / (2 * extX) * MASK_W);
+        var ry = Math.max(2, radius / (2 * extY) * MASK_H);
+        var r = Math.max(rx, ry);
+        var alpha = Math.max(0, Math.min(1, strength));
+        maskCtx.save();
+        maskCtx.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
+        var copies = [mx];
+        if (mx - r < 0) copies.push(mx + MASK_W);
+        if (mx + r > MASK_W) copies.push(mx - MASK_W);
+        for (var i = 0; i < copies.length; i++) {
+          var cx = copies[i];
+          var g = maskCtx.createRadialGradient(cx, my, 0, cx, my, r);
+          g.addColorStop(0, 'rgba(0,0,0,' + alpha + ')');
+          g.addColorStop(0.55, 'rgba(0,0,0,' + (alpha * 0.78) + ')');
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          maskCtx.fillStyle = g;
+          maskCtx.beginPath();
+          maskCtx.ellipse(cx, my, rx, ry, 0, 0, Math.PI * 2);
+          maskCtx.fill();
+        }
+        maskCtx.restore();
+      }
+
+      // Gusts queued by drags and taps, handed to the wind field each frame.
+      var MAX_GUSTS = 16;
+      var gusts = [];
+      var gustA = new Float32Array(MAX_GUSTS * 4);
+      var gustB = new Float32Array(MAX_GUSTS * 4);
+
+      function addGust(x, y, vx, vy, radius, strength, radial) {
+        if (gusts.length >= MAX_GUSTS) gusts.shift();
+        gusts.push([x, y, radius, strength, vx, vy, radial || 0]);
+      }
+
+      // A drag pushes air in the direction it moves, as hard as it moves:
+      // a slow drag barely stirs the cloud, a flick tears through it.
+      function gustAt(x, y, state) {
+        var now = performance.now();
+        if (state.gx === undefined) {
+          state.gx = x; state.gy = y; state.gt = now; state.gvx = 0; state.gvy = 0;
+          return;
+        }
+        var dtg = (now - state.gt) / 1000;
+        if (dtg < 0.012) return;
+        var vx = (x - state.gx) / dtg;
+        var vy = (y - state.gy) / dtg;
+        var k = Math.min(1, dtg * 18);
+        state.gvx += (vx - state.gvx) * k;
+        state.gvy += (vy - state.gvy) * k;
+        var sp = Math.hypot(state.gvx, state.gvy);
+        var gain = 0.62 * Math.min(1, 3.4 / Math.max(sp * 0.62, 1e-4));
+        var r = 0.075 * settings.brush;
+        var gap = Math.hypot(x - state.gx, y - state.gy);
+        var steps = Math.min(4, Math.max(1, Math.ceil(gap / (r * 0.8))));
+        for (var i = 1; i <= steps; i++) {
+          var f = i / steps;
+          addGust(state.gx + (x - state.gx) * f, state.gy + (y - state.gy) * f,
+            state.gvx * gain, state.gvy * gain, r, 0.55, 0);
+        }
+        state.gx = x; state.gy = y; state.gt = now;
+      }
+
+      function stepFlow(dt) {
+        if (!flowOK || skyAmount <= 0 || dt <= 0) { gusts.length = 0; return; }
+        var aspect = canvas.width / Math.max(1, canvas.height);
+        var ex = Math.max(1, aspect);
+        var ey = Math.max(1, 1 / aspect);
+        var n = gusts.length;
+        gustA.fill(0);
+        gustB.fill(0);
+        for (var i = 0; i < n; i++) {
+          var g = gusts[i];
+          gustA[i * 4] = g[0]; gustA[i * 4 + 1] = g[1]; gustA[i * 4 + 2] = g[2]; gustA[i * 4 + 3] = g[3];
+          gustB[i * 4] = g[4]; gustB[i * 4 + 1] = g[5]; gustB[i * 4 + 2] = g[6];
+        }
+        gusts.length = 0;
+        var relax = settings.trail >= 7.95 ? 1e5 : 1.5 + settings.trail * 3.2;
+        var sdt = dt * (reduceMotion ? 0.6 : 1);
+
+        function common(pr) {
+          var u = pr.u;
+          gl.useProgram(pr.p);
+          gl.uniform2f(u.uGrid, FLOW_W, FLOW_H);
+          gl.uniform2f(u.uExt, ex, ey);
+          gl.uniform1f(u.uDt, sdt);
+          gl.uniform1f(u.uTime, time);
+          gl.uniform1f(u.uDrift, drift);
+          gl.uniform4fv(u.uSplatA, gustA);
+          gl.uniform4fv(u.uSplatB, gustB);
+          gl.uniform1i(u.uSplats, n);
+          gl.uniform4fv(u.uLights, lightData);
+          return u;
+        }
+
+        var a = flow.cur;
+        var b = 1 - a;
+        gl.viewport(0, 0, FLOW_W, FLOW_H);
+
+        var u = common(flow.vel);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, flow.v[b].fb);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, flow.v[a].tex);
+        gl.uniform1i(u.uVel, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+        u = common(flow.map);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, flow.m[b].fb);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, flow.v[b].tex);
+        gl.uniform1i(u.uVel, 0);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, flow.m[a].tex);
+        gl.uniform1i(u.uMap, 1);
+        gl.uniform1f(u.uRelax, relax);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+        flow.cur = b;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.activeTexture(gl.TEXTURE0);
+      }
+
+      // Under the sky, parted cloud closes back over by itself. Trail sets how
+      // long that takes (about 8 s at the default); the top of the slider still
+      // keeps the opening. The fade is applied in steps of a quarter second so
+      // each step is large enough to survive the 8-bit canvas.
+      function healSky(dt) {
+        if (settings.trail >= 7.95) return;
+        skyHealAcc += dt;
+        if (skyHealAcc < 0.25) return;
+        var life = 1.5 + settings.trail * 3.2;
+        var a = 1 - Math.exp(-skyHealAcc / life);
+        skyHealAcc = 0;
+        maskCtx.save();
+        maskCtx.globalCompositeOperation = 'destination-out';
+        maskCtx.fillStyle = 'rgba(0,0,0,' + a + ')';
+        maskCtx.fillRect(0, 0, MASK_W, MASK_H);
+        maskCtx.restore();
+      }
+
+      function fadeMask(dt) {
+        if (!maskCtx) return;
+        if (sky) { healSky(dt); return; }
+        if (settings.trail >= 7.95) return;
+        var life = Math.max(1.5, settings.trail * 16);
+        var a = 1 - Math.exp(-dt / life);
+        maskCtx.save();
+        maskCtx.globalCompositeOperation = 'destination-out';
+        maskCtx.fillStyle = 'rgba(0,0,0,' + a + ')';
+        maskCtx.fillRect(0, 0, MASK_W, MASK_H);
+        maskCtx.restore();
+      }
+
+      function clearMask() {
+        if (maskCtx) maskCtx.clearRect(0, 0, MASK_W, MASK_H);
+      }
+
+      function initMaskTexture() {
+        maskTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, maskTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas);
+      }
+
+      function uploadMask() {
+        if (!maskTexture) return;
+        gl.bindTexture(gl.TEXTURE_2D, maskTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas);
+      }
+
+      function addMark(x, y, radius, life, strength, grow, vx, vy) {
+        if (marks.length >= MAX_MARKS) marks.shift();
+        radius *= settings.brush;
+        if (!(sky && flowOK)) stampMask(x, y, radius * 1.4, strength * 0.88, false);
+        life = Math.max(1, life * settings.trail);
+        marks.push({
+          x: x,
+          y: y,
+          r: radius,
+          rNow: radius,
+          born: time,
+          life: life,
+          strength: strength,
+          grow: grow,
+          vx: vx || 0,
+          vy: vy || 0,
+          opacity: 0
+        });
+      }
+
+      function bloom(x, y) {
+        var base = Math.random() * Math.PI * 2;
+        for (var i = 0; i < 3; i++) {
+          var a = base + i * (Math.PI * 2 / 3) + (Math.random() - 0.5) * 0.5;
+          var off = 0.040 + Math.random() * 0.045;
+          var speed = 0.008 + Math.random() * 0.010;
+          addMark(
+            x + Math.cos(a) * off,
+            y + Math.sin(a) * off,
+            0.170 + Math.random() * 0.075,
+            22 + Math.random() * 7,
+            0.9,
+            0.38,
+            Math.cos(a) * speed,
+            Math.sin(a) * speed
+          );
+        }
+        addMark(x, y, 0.145, 26, 0.95, 0.18);
+        if (sky && flowOK) addGust(x, y, 0, 0, 0.11 * settings.brush, 0.9, 1.5);
+        addShock(x, y, 0.95);
+        burstParticles(x, y, 26, 1.0);
+        impulseParticles(x, y, 0.55, 0.6);
+        audio.aperture('dark', scenePan(x), 0.95);
+      }
+
+      function paintAt(x, y, force, pointerState) {
+        var lp = pointerState ? pointerState.lastPaint : lastPaint;
+        var lpa = pointerState ? pointerState.lastPaintAt : lastPaintAt;
+        var dist = lp ? Math.hypot(x - lp.x, y - lp.y) : 1;
+        if (!force && dist < 0.028 && time - lpa < 0.06) return;
+        addMark(
+          x + (Math.random() - 0.5) * 0.010,
+          y + (Math.random() - 0.5) * 0.010,
+          0.100 + Math.random() * 0.050,
+          16 + Math.random() * 6,
+          0.8,
+          0.12
+        );
+        if (pointerState) {
+          pointerState.lastPaint = { x: x, y: y };
+          pointerState.lastPaintAt = time;
+        } else {
+          lastPaint = { x: x, y: y };
+          lastPaintAt = time;
+        }
+        if (time - lastShockAt > 0.10) {
+          addShock(x, y, 0.42);
+          lastShockAt = time;
+        }
+      }
+
+
+      function addLight(x, y, radius, life, strength, grow) {
+        if (lights.length >= MAX_LIGHTS) lights.shift();
+        lights.push({
+          x: x,
+          y: y,
+          r: Math.max(0.03, radius * settings.brush),
+          rNow: Math.max(0.03, radius * settings.brush),
+          born: time,
+          life: Math.max(1, life),
+          strength: strength,
+          grow: grow,
+          opacity: 0
+        });
+      }
+
+      function updateLights(dt) {
+        for (var i = lights.length - 1; i >= 0; i--) {
+          var l = lights[i];
+          var age = time - l.born;
+          if (age > l.life) {
+            lights.splice(i, 1);
+            continue;
+          }
+          l.rNow = l.r * (1.0 + l.grow * (1.0 - Math.exp(-age * 1.1)));
+          l.opacity = smoothstep(0, 0.35, age) * (1 - smoothstep(l.life - 1.2, l.life, age)) * l.strength;
+        }
+      }
+
+      function uploadLights() {
+        lightData.fill(0);
+        for (var i = 0; i < lights.length && i < MAX_LIGHTS; i++) {
+          var l = lights[i];
+          lightData[i * 4] = l.x;
+          lightData[i * 4 + 1] = l.y;
+          lightData[i * 4 + 2] = l.rNow;
+          lightData[i * 4 + 3] = l.opacity;
+        }
+      }
+
+      function addAttractor(x, y, strength) {
+        if (attractors.length >= MAX_ATTRACTORS) attractors.shift();
+        attractors.push({ x: x, y: y, born: time, strength: strength });
+      }
+
+      function updateAttractors() {
+        for (var i = attractors.length - 1; i >= 0; i--) {
+          if (time - attractors[i].born > 2.4) attractors.splice(i, 1);
+        }
+      }
+
+      // Dust is simulated in scene units (x: +-aspect, y: +-1) so every force is
+      // round on any screen; positions stay in 0..1 for the point shader.
+      function recruitParticle() {
+        // Borrow a quiet mote rather than one that is visibly busy, and fade it
+        // in so nothing pops.
+        var best = particles[(Math.random() * activeParticles) | 0];
+        for (var t = 0; t < 2; t++) {
+          var c = particles[(Math.random() * activeParticles) | 0];
+          if (c.flash + c.energy < best.flash + best.energy) best = c;
+        }
+        best.fade = 0;
+        return best;
+      }
+
+      function pullParticles(x, y, count, force) {
+        if (!activeParticles) return;
+        var aspect = canvas.width / Math.max(1, canvas.height);
+        var vscale = settings.velocity;
+        for (var i = 0; i < count; i++) {
+          var p = recruitParticle();
+          var a = Math.random() * Math.PI * 2;
+          var rad = 0.20 + Math.random() * 0.40;
+          p.x = (x + Math.cos(a) * rad) / (2.0 * aspect) + 0.5;
+          p.y = (y + Math.sin(a) * rad) * 0.5 + 0.5;
+          var inward = (0.05 + Math.random() * 0.12) * force * vscale;
+          p.vx = -Math.cos(a) * inward - Math.sin(a) * inward * 0.5;
+          p.vy = -Math.sin(a) * inward + Math.cos(a) * inward * 0.5;
+          p.energy = (0.5 + Math.random() * 0.5) * force;
+          p.flash = (0.6 + Math.random() * 0.6) * force;
+          p.size = 0.0026 + Math.random() * 0.0060;
+        }
+        audio.dust(scenePan(x), force * 0.8, true);
+      }
+
+      // A single soft puff: nearby dust is nudged outward once and then eases
+      // to rest under drag, instead of being shoved for as long as a ripple lasts.
+      function impulseParticles(x, y, radius, strength) {
+        var aspect = canvas.width / Math.max(1, canvas.height);
+        var vscale = settings.velocity;
+        if (!vscale) return;
+        for (var i = 0; i < activeParticles; i++) {
+          var p = particles[i];
+          var dx = (p.x - 0.5) * 2.0 * aspect - x;
+          var dy = (p.y - 0.5) * 2.0 - y;
+          var d = Math.hypot(dx, dy);
+          if (d > radius) continue;
+          var w = 1 - d / radius;
+          w = w * w * strength * vscale;
+          var inv = 1 / (d + 0.0001);
+          p.vx += (dx * inv - dy * inv * 0.22) * w;
+          p.vy += (dy * inv + dx * inv * 0.22) * w;
+          p.flash = Math.max(p.flash, w * 1.2);
+        }
+      }
+
+
+      function eraseMarksAt(x, y, radius, power) {
+        stampMask(x, y, radius, power * 0.9, true);
+        for (var i = marks.length - 1; i >= 0; i--) {
+          var m = marks[i];
+          var d = Math.hypot(m.x - x, m.y - y);
+          if (d > radius) continue;
+          var falloff = 1 - d / radius;
+          m.strength *= Math.max(0, 1 - power * falloff);
+          if (m.strength < 0.035) marks.splice(i, 1);
+        }
+      }
+
+      function lightBloom(x, y) {
+        eraseMarksAt(x, y, Math.max(0.14, 0.22 * settings.brush), 0.96);
+        addLight(x, y, 0.270, 6.0, 1.0, 0.30);
+        addLight(x, y, 0.140, 8.0, 0.82, 0.50);
+        addAttractor(x, y, 1.9);
+        pullParticles(x, y, 60, 1.0);
+        lastLight = { x: x, y: y };
+        lastLightAt = time;
+        audio.aperture('light', scenePan(x), 0.9);
+        audio.dust(scenePan(x), 1.0, true);
+      }
+
+      function paintLightAt(x, y, pointerState) {
+        var lp = pointerState ? pointerState.lastLight : lastLight;
+        var lpa = pointerState ? pointerState.lastLightAt : lastLightAt;
+        var dist = lp ? Math.hypot(x - lp.x, y - lp.y) : 1;
+        if (dist < 0.026 && time - lpa < 0.06) return;
+        eraseMarksAt(x, y, Math.max(0.10, 0.14 * settings.brush), 0.78);
+        addLight(x + (Math.random() - 0.5) * 0.010, y + (Math.random() - 0.5) * 0.010, 0.125 + Math.random() * 0.055, 4.4, 0.78, 0.12);
+        if (time - lpa > 0.10) {
+          addAttractor(x, y, 0.62);
+          pullParticles(x, y, 4, 0.48);
+        }
+        if (pointerState) {
+          pointerState.lastLight = { x: x, y: y };
+          pointerState.lastLightAt = time;
+        } else {
+          lastLight = { x: x, y: y };
+          lastLightAt = time;
+        }
+      }
+
+      function updateAudio(dt) {
+        if (!audio.enabled) return;
+        var aspect = canvas.width / Math.max(1, canvas.height);
+        var dark = 0;
+        var light = 0;
+        for (var i = 0; i < marks.length; i++) {
+          var s = marks[i];
+          var dx = pointer.x - s.x;
+          var dy = pointer.y - s.y;
+          var rr = Math.max(0.03, s.rNow);
+          dark += s.opacity * Math.exp(-(dx * dx + dy * dy) / (rr * rr * 2.2));
+        }
+        for (var j = 0; j < lights.length; j++) {
+          var l = lights[j];
+          var lx = pointer.x - l.x;
+          var ly = pointer.y - l.y;
+          var lr = Math.max(0.03, l.rNow);
+          light += l.opacity * Math.exp(-(lx * lx + ly * ly) / (lr * lr * 2.2));
+        }
+        dark = 1 - Math.exp(-dark * 1.7);
+        light = 1 - Math.exp(-light * 1.7);
+        var speed = clamp(Math.hypot(pointerVel.x, pointerVel.y) / 1.4, 0, 1);
+        audio.update(dt, {
+          speed: speed,
+          press: press,
+          dark: dark,
+          light: light,
+          active: down !== null,
+          painting: painting,
+          mode: down ? down.kind : 'dark',
+          pan: clamp(pointer.x / Math.max(0.001, aspect), -1, 1)
+        });
+      }
+
+      function updateMarks(dt) {
+        for (var i = marks.length - 1; i >= 0; i--) {
+          var s = marks[i];
+          var age = time - s.born;
+          if (age > s.life) {
+            marks.splice(i, 1);
+            continue;
+          }
+          var f = flowAt(s.x, s.y, time);
+          s.vx *= Math.pow(0.985, dt * 60);
+          s.vy *= Math.pow(0.985, dt * 60);
+          s.x += (f.x * 0.022 + s.vx) * dt;
+          s.y += (f.y * 0.022 + s.vy) * dt;
+          s.rNow = s.r * (1.0 + s.grow * (1.0 - Math.exp(-age * 1.2)));
+          s.opacity = smoothstep(0, 1.2, age) * (1 - smoothstep(s.life - 5, s.life, age)) * s.strength;
+        }
+      }
+
+      function uploadMarks() {
+        markData.fill(0);
+        var n = Math.min(marks.length, MAX_MARKS);
+        for (var i = 0; i < n; i++) {
+          var s = marks[i];
+          markData[i * 4] = s.x;
+          markData[i * 4 + 1] = s.y;
+          markData[i * 4 + 2] = s.rNow;
+          markData[i * 4 + 3] = s.opacity;
+        }
+        gl.uniform4fv(uniforms.marks, markData);
+      }
+
+
+      function addShock(x, y, strength) {
+        shocks.push({ x: x, y: y, born: time, strength: strength });
+        if (shocks.length > MAX_SHOCKS) shocks.shift();
+      }
+
+      function updateShocks() {
+        shockData.fill(0);
+        for (var i = shocks.length - 1; i >= 0; i--) {
+          var s = shocks[i];
+          var age = time - s.born;
+          if (age > 2.2) {
+            shocks.splice(i, 1);
+            continue;
+          }
+          if (i < MAX_SHOCKS) {
+            shockData[i * 4] = s.x;
+            shockData[i * 4 + 1] = s.y;
+            shockData[i * 4 + 2] = age;
+            shockData[i * 4 + 3] = s.strength;
+          }
+        }
+      }
+
+
+      function burstParticles(x, y, count, force) {
+        if (!activeParticles) return;
+        var aspect = canvas.width / Math.max(1, canvas.height);
+        for (var i = 0; i < count; i++) {
+          var p = recruitParticle();
+          var a = Math.random() * Math.PI * 2;
+          var rad = 0.08 + Math.random() * 0.22;
+          p.x = (x + Math.cos(a) * rad) / (2.0 * aspect) + 0.5;
+          p.y = (y + Math.sin(a) * rad) * 0.5 + 0.5;
+          var sp = (0.06 + Math.random() * 0.22) * force * settings.velocity;
+          var turn = (Math.random() - 0.5) * 0.6;
+          p.vx = (Math.cos(a) - Math.sin(a) * turn) * sp;
+          p.vy = (Math.sin(a) + Math.cos(a) * turn) * sp;
+          p.energy = (0.9 + Math.random() * 0.9) * force;
+          p.flash = (1.1 + Math.random() * 0.8) * force;
+          p.size = 0.0030 + Math.random() * 0.0060;
+        }
+        audio.dust(scenePan(x), force, false);
+      }
+
+      function initParticles() {
+        particles.length = 0;
+        for (var i = 0; i < MAX_PARTICLES; i++) {
+          particles.push({
+            x: Math.random(),
+            y: Math.random(),
+            vx: 0,
+            vy: 0,
+            size: 0.0020 + Math.random() * 0.0050,
+            base: 0.060 + Math.random() * 0.135,
+            phase: Math.random() * Math.PI * 2,
+            energy: 0,
+            flash: 0,
+            fade: 1,
+            bright: 0.08,
+            dark: 0
+          });
+        }
+      }
+
+      // --- Dust physics tuning (scene units, per second) -------------------
+      var DUST_DRAG = 2.4;        // linear drag: how quickly dust settles
+      var DUST_DRAG_FAST = 2.0;   // extra drag per unit of speed: tames flicks
+      var DUST_MAX_SPEED = 1.5;   // hard ceiling, nothing ever shoots
+      var STIR_MAX = 2.4;         // pointer speed is clamped to this
+      var STIR_CARRY = 0.42;      // share of pointer velocity the dust picks up
+      var STIR_GRIP = 10.0;       // how fast dust under the pointer matches it
+      var RIPPLE_PUSH = 0.7;      // outward nudge as a ripple ring passes
+      var GATHER_PULL = 1.6;      // max pull of light on dust
+
+      var stirrers = [];
+      var orbStir = {};
+
+      function trackStir(o, x, y, dt, part, gain) {
+        if (o.stirX === undefined) { o.stirX = x; o.stirY = y; o.stirVx = 0; o.stirVy = 0; }
+        if (dt > 0.0001) {
+          var vx = (x - o.stirX) / dt;
+          var vy = (y - o.stirY) / dt;
+          var sp = Math.hypot(vx, vy);
+          if (sp > STIR_MAX) { vx *= STIR_MAX / sp; vy *= STIR_MAX / sp; }
+          var k = Math.min(1, dt * 12);
+          o.stirVx += (vx - o.stirVx) * k;
+          o.stirVy += (vy - o.stirVy) * k;
+        }
+        o.stirX = x;
+        o.stirY = y;
+        stirrers.push({ x: x, y: y, vx: o.stirVx, vy: o.stirVy, speed: Math.hypot(o.stirVx, o.stirVy), part: part, gain: gain });
+      }
+
+      function buildStirrers(dt) {
+        stirrers.length = 0;
+        if (active.size > 0) {
+          orbStir.stirX = undefined;
+          // Dark parts the dust around the brush; light draws it in a little.
+          active.forEach(function (state) {
+            trackStir(state, state.x, state.y, dt, state.kind === 'light' ? -0.4 : 1.5, 1.0);
+          });
+        } else {
+          // The resting pearl stirs gently too, so hovering already feels alive.
+          trackStir(orbStir, pointer.x, pointer.y, dt, 0.5, 0.55);
+        }
+      }
+
+      function updateParticles(dt) {
+        var aspect = canvas.width / Math.max(1, canvas.height);
+        var vscale = settings.velocity;
+        var toU = 0.5 / aspect;
+        var stirR = 0.20 + 0.10 * settings.brush;
+        var stirReach = stirR * stirR * 6.25;
+        var orbitR = 0.07 + 0.05 * settings.brush;
+        buildStirrers(dt);
+        for (var i = 0; i < activeParticles; i++) {
+          var p = particles[i];
+          var px = (p.x - 0.5) * 2.0 * aspect;
+          var py = (p.y - 0.5) * 2.0;
+          var extraDrag = 0;
+
+          // Slow ambient drift.
+          var ax = (Math.sin(p.y * 5.3 + time * 0.12 + p.phase)
+                 + Math.cos((p.x + p.y) * 3.7 - time * 0.08) * 0.5) * 0.03;
+          var ay = (Math.cos(p.x * 4.9 - time * 0.10 + p.phase)
+                 + Math.sin((p.x - p.y) * 4.1 + time * 0.07) * 0.5) * 0.03;
+
+          // Ripples: the ring lights dust as it passes and gives it a brief
+          // nudge. The ring outruns the dust, so dust never rides the front.
+          for (var j = 0; j < shocks.length; j++) {
+            var s = shocks[j];
+            var age = time - s.born;
+            if (age < 0 || age > 2.0) continue;
+            var dx = px - s.x;
+            var dy = py - s.y;
+            var dist = Math.hypot(dx, dy);
+            var width = 0.070 + age * 0.060;
+            var off = (dist - age * 0.82) / width;
+            if (off > 3 || off < -3) continue;
+            var ring = Math.exp(-off * off) * s.strength;
+            var glow = ring * Math.exp(-age * 0.62);
+            var push = ring * Math.exp(-age * 1.6) * RIPPLE_PUSH;
+            var inv = 1 / (dist + 0.0001);
+            ax += (dx * inv - dy * inv * 0.25) * push;
+            ay += (dy * inv + dx * inv * 0.25) * push;
+            p.energy = Math.max(p.energy, glow);
+            p.flash = Math.max(p.flash, glow * 0.85);
+          }
+
+          // Light gathers dust into a slow halo around it rather than through it.
+          var gx = 0;
+          var gy = 0;
+          for (var k = 0; k < attractors.length; k++) {
+            var a = attractors[k];
+            var aa = time - a.born;
+            if (aa < 0 || aa > 2.4) continue;
+            var adx = px - a.x;
+            var ady = py - a.y;
+            var adist = Math.hypot(adx, ady);
+            if (adist > 1.0) continue;
+            var falloff = Math.exp(-aa * 0.72) * a.strength * (1.0 - smoothstep(0.18, 1.0, adist));
+            var ainv = 1 / (adist + 0.0001);
+            var radial = adist > orbitR
+              ? -Math.min((adist - orbitR) * 5.0, 0.9)
+              : (1 - adist / orbitR) * 1.2;
+            var swirl = 0.9 * Math.min(1, adist / orbitR);
+            gx += (adx * ainv * radial - ady * ainv * swirl) * falloff;
+            gy += (ady * ainv * radial + adx * ainv * swirl) * falloff;
+            // Thicker air near the light so dust settles into orbit.
+            extraDrag += 2.5 * Math.min(1, falloff) * (1.0 - smoothstep(orbitR, orbitR * 3.0, adist));
+            p.energy = Math.max(p.energy, falloff * 0.7);
+            p.flash = Math.max(p.flash, falloff * 0.5);
+          }
+          var g = Math.hypot(gx, gy);
+          if (g > GATHER_PULL) { gx *= GATHER_PULL / g; gy *= GATHER_PULL / g; }
+          ax += gx;
+          ay += gy;
+
+          // Pointers stir: dust under the brush is carried along with it, parts
+          // around it, and curls back in its wake.
+          if (vscale > 0) {
+            for (var q = 0; q < stirrers.length; q++) {
+              var st = stirrers[q];
+              var sdx = px - st.x;
+              var sdy = py - st.y;
+              var sd2 = sdx * sdx + sdy * sdy;
+              if (sd2 > stirReach) continue;
+              var sd = Math.sqrt(sd2);
+              var sq = sd / stirR;
+              var w = Math.exp(-sq * sq * 1.4);
+              var move = Math.min(1, st.speed / 0.3);
+              var grip = Math.min(1, w * move * st.gain * STIR_GRIP * dt);
+              p.vx += (st.vx * STIR_CARRY * vscale - p.vx) * grip;
+              p.vy += (st.vy * STIR_CARRY * vscale - p.vy) * grip;
+              var sinv = 1 / (sd + 0.0001);
+              var part = w * (0.25 + 0.75 * move) * st.part;
+              var curl = (st.vx * sdy - st.vy * sdx) * sinv * sq * w * 1.8 * st.gain;
+              ax += sdx * sinv * part - sdy * sinv * curl;
+              ay += sdy * sinv * part + sdx * sinv * curl;
+              p.flash = Math.max(p.flash, w * move * st.gain * 0.35);
+            }
+          }
+
+          p.vx += ax * vscale * dt;
+          p.vy += ay * vscale * dt;
+          // On the ride the dust falls behind with the trees.
+          p.vy -= 0.12 * rideAmount * settings.pace * dt;
+
+          var speed = Math.hypot(p.vx, p.vy);
+          var damp = Math.exp(-(DUST_DRAG + DUST_DRAG_FAST * speed + extraDrag) * dt);
+          if (speed * damp > DUST_MAX_SPEED) damp = DUST_MAX_SPEED / speed;
+          p.vx *= damp;
+          p.vy *= damp;
+          speed *= damp;
+          p.x += p.vx * toU * dt;
+          p.y += p.vy * 0.5 * dt;
+          if (p.x < -0.08) p.x = 1.08;
+          if (p.x > 1.08) p.x = -0.08;
+          if (p.y < -0.08) p.y = 1.08;
+          if (p.y > 1.08) p.y = -0.08;
+
+          p.energy *= Math.pow(0.55, dt * 60);
+          p.flash *= Math.pow(0.88, dt * 60);
+          p.fade = Math.min(1, p.fade + dt * 4.0);
+          p.bright = (p.base + Math.min(0.22, speed * 0.20) + p.energy * 0.25 + p.flash * 0.55) * p.fade * (stillMode ? 0.35 : 1.0);
+
+          var psx = (p.x - 0.5) * 2.0 * aspect;
+          var psy = (p.y - 0.5) * 2.0;
+          var dark = 0;
+          for (var mi = 0; mi < marks.length; mi++) {
+            var mm = marks[mi];
+            var mr = Math.max(0.045, mm.rNow * 2.3);
+            var md = Math.hypot(psx - mm.x, psy - mm.y);
+            var mq = md / mr;
+            dark += mm.opacity * Math.exp(-mq * mq * 1.5);
+          }
+          p.dark = Math.min(1, dark * 2.1);
+        }
+      }
+
+      function uploadParticles() {
+        if (!particleProgram) return;
+        var toU = 0.5 / (canvas.width / Math.max(1, canvas.height));
+        for (var i = 0; i < activeParticles; i++) {
+          var p = particles[i];
+          var base = i * 12;
+          var ux = p.vx * toU;
+          var uy = p.vy * 0.5;
+          var lag = 0.030 + Math.min(0.070, Math.hypot(p.vx, p.vy) * 0.06);
+          var lightOut = 1.0 - p.dark * 0.93;
+          for (var k = 0; k < 3; k++) {
+            var at = base + k * 4;
+            var back = lag * k;
+            particleData[at] = p.x - ux * back;
+            particleData[at + 1] = p.y - uy * back;
+            particleData[at + 2] = p.size * (1.0 - k * 0.24);
+            particleData[at + 3] = p.bright * (1.0 - k * 0.30) * lightOut;
+          }
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, particleData);
+      }
+
+      function drawParticles() {
+        if (!particleProgram || !particleVao) return;
+        gl.useProgram(particleProgram);
+        gl.bindVertexArray(particleVao);
+        gl.uniform2f(particleUniforms.res, canvas.width, canvas.height);
+        particlePalette.set(paletteLinear);
+        particlePalette[9] = inkLinear[3];
+        particlePalette[10] = inkLinear[4];
+        particlePalette[11] = inkLinear[5];
+        particlePalette[12] = inkLinear[6];
+        particlePalette[13] = inkLinear[7];
+        particlePalette[14] = inkLinear[8];
+        gl.uniform3fv(particleUniforms.pal, particlePalette);
+        // Under the open sky the dust is a few faint motes, not the subject.
+        gl.uniform1f(particleUniforms.dim, 1 - 0.6 * skyAmount);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+        gl.drawArrays(gl.POINTS, 0, activeParticles * 3);
+        gl.disable(gl.BLEND);
+        gl.bindVertexArray(vao);
+      }
+
+
+      function saveTune() {
+        try { localStorage.setItem('opal.tune', JSON.stringify(settings)); } catch (e) { /* private */ }
+      }
+
+      function updateInkPreview() {
+        inkPreview.style.background = 'linear-gradient(90deg, ' + settings.ink0 + ', ' + settings.ink1 + ' 50%, ' + settings.ink2 + ')';
+      }
+
+      function writeInk() {
+        for (var i = 0; i < 3; i++) {
+          var c = hexToRgb(settings['ink' + i]);
+          inkLinear[i * 3] = linear(c.r);
+          inkLinear[i * 3 + 1] = linear(c.g);
+          inkLinear[i * 3 + 2] = linear(c.b);
+        }
+        gl.useProgram(program);
+        gl.uniform3fv(uniforms.ink, inkLinear);
+        gl.uniform1f(uniforms.inkCurve, settings.curve);
+        updateInkPreview();
+      }
+
+      function syncTuneControls() {
+        brushInput.value = settings.brush.toFixed(2);
+        trailInput.value = settings.trail.toFixed(1);
+        particlesInput.value = String(Math.round(settings.particles));
+        velocityInput.value = settings.velocity.toFixed(2);
+        veilInput.value = settings.veil.toFixed(2);
+        ink0Input.value = settings.ink0;
+        ink1Input.value = settings.ink1;
+        ink2Input.value = settings.ink2;
+        curveInput.value = settings.curve.toFixed(2);
+        paceInput.value = settings.pace.toFixed(2);
+        paceOut.textContent = settings.pace.toFixed(2);
+        brushOut.textContent = settings.brush.toFixed(2);
+        trailOut.textContent = settings.trail.toFixed(1);
+        particlesOut.textContent = String(Math.round(settings.particles));
+        velocityOut.textContent = settings.velocity.toFixed(2);
+        veilOut.textContent = settings.veil.toFixed(2);
+        curveOut.textContent = settings.curve.toFixed(2);
+        updateInkPreview();
+      }
+
+      function tuneChanged(e) {
+        var id = e.target && e.target.id;
+        if (id === 'brush') settings.brush = Math.max(0.4, Math.min(1.4, parseFloat(e.target.value) || TUNE_DEFAULTS.brush));
+        else if (id === 'trail') settings.trail = Math.max(0.3, Math.min(8, parseFloat(e.target.value) || TUNE_DEFAULTS.trail));
+        else if (id === 'particles') {
+          settings.particles = Math.max(150, Math.min(MAX_PARTICLES, parseInt(e.target.value, 10) || TUNE_DEFAULTS.particles));
+          activeParticles = Math.round(settings.particles);
+        } else if (id === 'velocity') settings.velocity = Math.max(0, Math.min(2.5, parseFloat(e.target.value)));
+        else if (id === 'veil') settings.veil = Math.max(0.3, Math.min(1.6, parseFloat(e.target.value) || TUNE_DEFAULTS.veil));
+        else if (id === 'pace') settings.pace = Math.max(0.2, Math.min(2.5, parseFloat(e.target.value) || TUNE_DEFAULTS.pace));
+        else if (id === 'ink0' || id === 'ink1' || id === 'ink2') {
+          settings[id] = e.target.value;
+          writeInk();
+        } else if (id === 'curve') {
+          settings.curve = Math.max(-1, Math.min(1, parseFloat(e.target.value) || 0));
+          writeInk();
+        } else return;
+        syncTuneControls();
+        saveTune();
+      }
+
+
+      function useWritePreset() {
+        settings.brush = 0.62;
+        settings.trail = Math.max(4.0, settings.trail);
+        syncTuneControls();
+        saveTune();
+      }
+
+
+      function erodeForTrail() {
+        if (settings.trail >= 7.95) return 0;
+        var t = Math.max(0.3, Math.min(8, settings.trail));
+        return 0.38 * (1 - Math.pow(t / 8, 0.55));
+      }
+
+      function resetTune() {
+        settings.brush = TUNE_DEFAULTS.brush;
+        settings.trail = TUNE_DEFAULTS.trail;
+        settings.particles = TUNE_DEFAULTS.particles;
+        settings.velocity = TUNE_DEFAULTS.velocity;
+        settings.veil = TUNE_DEFAULTS.veil;
+        settings.ink0 = TUNE_DEFAULTS.ink0;
+        settings.ink1 = TUNE_DEFAULTS.ink1;
+        settings.ink2 = TUNE_DEFAULTS.ink2;
+        settings.curve = TUNE_DEFAULTS.curve;
+        settings.pace = TUNE_DEFAULTS.pace;
+        activeParticles = Math.round(settings.particles);
+        syncTuneControls();
+        writeInk();
+        saveTune();
+      }
+
+      function stillVeil() {
+        stillMode = true;
+        marks.length = 0;
+        shocks.length = 0;
+        clearMask();
+        lights.length = 0;
+        attractors.length = 0;
+        lightData.fill(0);
+        for (var i = 0; i < particles.length; i++) {
+          var p = particles[i];
+          p.vx *= 0.12;
+          p.vy *= 0.12;
+          p.fade = 1;
+          p.energy = 0;
+          p.flash = 0;
+          p.bright = 0.025;
+        }
+        nextPulse = time + 100000;
+      }
+
+      function setRide(on, quiet) {
+        ride = !!on;
+        rideButton.setAttribute('aria-pressed', ride ? 'true' : 'false');
+        rideButton.setAttribute('aria-label', 'ride beneath the pines: ' + (ride ? 'on' : 'off'));
+        if (!quiet) {
+          try { localStorage.setItem('opal.void.ride', ride ? 'on' : 'off'); } catch (e) { /* private */ }
+        }
+      }
+
+      function setPines(fine, quiet) {
+        pinesFine = !!fine;
+        pinesButton.setAttribute('aria-pressed', pinesFine ? 'true' : 'false');
+        pinesButton.innerHTML = 'pines &middot; ' + (pinesFine ? 'fine' : 'classic');
+        if (!quiet) {
+          try { localStorage.setItem('opal.void.pines', pinesFine ? 'fine' : 'classic'); } catch (e) { /* private */ }
+        }
+      }
+
+      function setSky(on, quiet) {
+        sky = !!on;
+        skyHealAcc = 0;
+        skyButton.setAttribute('aria-pressed', sky ? 'true' : 'false');
+        skyButton.setAttribute('aria-label', 'the night sky: ' + (sky ? 'on' : 'off'));
+        if (!quiet) {
+          try { localStorage.setItem('opal.void.sky', sky ? 'on' : 'off'); } catch (e) { /* private */ }
+        }
+      }
+
+      function setTuneOpen(open) {
+        if (open) document.body.classList.add('tuning');
+        else document.body.classList.remove('tuning');
+        tuneButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+        panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+      }
+
+      function resize() {
+        var w = window.innerWidth || document.documentElement.clientWidth || 1;
+        var h = window.innerHeight || document.documentElement.clientHeight || 1;
+        var dpr = Math.min(window.devicePixelRatio || 1, 1.55);
+        var cw = Math.max(1, Math.round(w * dpr));
+        var ch = Math.max(1, Math.round(h * dpr));
+        var maxPixels = 2100000;
+        if (cw * ch > maxPixels) {
+          var scale = Math.sqrt(maxPixels / (cw * ch));
+          cw = Math.max(1, Math.round(cw * scale));
+          ch = Math.max(1, Math.round(ch * scale));
+        }
+        if (canvas.width !== cw || canvas.height !== ch) {
+          canvas.width = cw;
+          canvas.height = ch;
+          gl.viewport(0, 0, cw, ch);
+        }
+      }
+
+      function dismissHintSoon() {
+        if (engaged) return;
+        engaged = true;
+        clearTimeout(hintTimer);
+        hintTimer = setTimeout(function () { hint.classList.add('gone'); }, 2800);
+      }
+
+      function updateOrb(dt) {
+        var idle = smoothstep(2.6, 9.0, (performance.now() - lastActivity) / 1000);
+        var auto = autoTarget();
+        var tx;
+        var ty;
+
+        if (!hasMoved) {
+          if (reduceMotion) {
+            tx = 0;
+            ty = 0;
+          } else {
+            tx = auto.x;
+            ty = auto.y;
+          }
+        } else if (reduceMotion || press > 0.02) {
+          tx = user.x;
+          ty = user.y;
+        } else {
+          var blend = idle * 0.88;
+          tx = user.x + (auto.x - user.x) * blend;
+          ty = user.y + (auto.y - user.y) * blend;
+        }
+
+        previousPointer.x = pointer.x;
+        previousPointer.y = pointer.y;
+        var follow = down ? 1.0 : Math.min(1, dt * 4.0);
+        pointer.x += (tx - pointer.x) * follow;
+        pointer.y += (ty - pointer.y) * follow;
+
+        if (dt > 0.0001) {
+          var vx = (pointer.x - previousPointer.x) / dt * 0.045;
+          var vy = (pointer.y - previousPointer.y) / dt * 0.045;
+          pointerVel.x += (clamp(vx, -2, 2) - pointerVel.x) * Math.min(1, dt * 7);
+          pointerVel.y += (clamp(vy, -2, 2) - pointerVel.y) * Math.min(1, dt * 7);
+        }
+
+        press += (pressTarget - press) * Math.min(1, dt * 7);
+      }
+
+      function frame(now) {
+        if (!running) return;
+        raf = requestAnimationFrame(frame);
+        if (!last) last = now;
+        var dt = (now - last) / 1000;
+        last = now;
+        if (dt > 0.06) dt = 0.06;
+        if (dt < 0) dt = 0;
+        time += dt * 0.92;
+        if (!reduceMotion && !down && time > nextPulse) {
+          addShock(pointer.x, pointer.y, 0.26);
+          burstParticles(pointer.x, pointer.y, 8, 0.42);
+          impulseParticles(pointer.x, pointer.y, 0.40, 0.14);
+          nextPulse = time + 8 + Math.random() * 7;
+        }
+
+        updateOrb(dt);
+
+        // The pines keep passing while the ride fades in and out.
+        rideAmount += ((ride ? 1 : 0) - rideAmount) * Math.min(1, dt * 1.3);
+        if (rideAmount < 0.001 && !ride) rideAmount = 0;
+        if (rideAmount > 0) travel += dt * 0.16 * settings.pace * (reduceMotion ? 0.35 : 1);
+
+        // The wind only blows under the sky; the void keeps its mask still.
+        skyAmount += ((sky ? 1 : 0) - skyAmount) * Math.min(1, dt * 1.1);
+        if (Math.abs(skyAmount - (sky ? 1 : 0)) < 0.001) skyAmount = sky ? 1 : 0;
+        drift += dt * SKY_WIND * skyAmount * (reduceMotion ? 0.35 : 1);
+
+        if (paletteMix < 1) {
+          paletteMix = Math.min(1, paletteMix + dt / 0.95);
+          writePalette();
+        }
+
+        fadeMask(dt);
+        updateMarks(dt);
+        updateShocks();
+        updateLights(dt);
+        updateAttractors();
+        updateAudio(dt);
+        updateParticles(dt);
+        uploadParticles();
+        uploadLights();
+        uploadMask();
+        stepFlow(dt);
+        gl.useProgram(program);
+        uploadMarks();
+        gl.uniform4fv(uniforms.shocks, shockData);
+        gl.uniform4fv(uniforms.lights, lightData);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, maskTexture);
+        gl.uniform1i(uniforms.mask, 0);
+        gl.uniform2f(uniforms.res, canvas.width, canvas.height);
+        gl.uniform1f(uniforms.time, time);
+        gl.uniform2f(uniforms.pointer, pointer.x, pointer.y);
+        gl.uniform2f(uniforms.pointerVel, pointerVel.x, pointerVel.y);
+        gl.uniform1f(uniforms.press, press);
+        gl.uniform1f(uniforms.veil, settings.veil);
+        gl.uniform1f(uniforms.erode, erodeForTrail());
+        gl.uniform1f(uniforms.ride, rideAmount);
+        gl.uniform1f(uniforms.travel, travel);
+        gl.uniform1f(uniforms.pines, pinesFine ? 1 : 0);
+        gl.uniform1f(uniforms.sky, skyAmount);
+        gl.uniform1f(uniforms.drift, drift);
+        gl.uniform1f(uniforms.flowOn, flowOK ? 1 : 0);
+        if (flowOK) {
+          gl.activeTexture(gl.TEXTURE1);
+          gl.bindTexture(gl.TEXTURE_2D, flow.m[flow.cur].tex);
+          gl.uniform1i(uniforms.flow, 1);
+          gl.activeTexture(gl.TEXTURE2);
+          gl.bindTexture(gl.TEXTURE_2D, flow.v[flow.cur].tex);
+          gl.uniform1i(uniforms.wind, 2);
+          gl.activeTexture(gl.TEXTURE0);
+        }
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        drawParticles();
+
+        if (!document.body.classList.contains('ready')) document.body.classList.add('ready');
+      }
+
+      canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+      function syncActiveState() {
+        var anyPainting = false;
+        active.forEach(function (state) { if (state.painting) anyPainting = true; });
+        painting = anyPainting;
+        pressTarget = active.size > 0 ? 1 : 0;
+        if (active.size > 0) document.body.classList.add('dragging');
+        else document.body.classList.remove('dragging');
+      }
+
+      function reflectBrushMode() {
+        document.body.classList.toggle('light-mode', lightMode);
+        if (modeName) modeName.textContent = lightMode ? 'brush · light' : 'brush · dark';
+        if (modeChip) {
+          modeChip.setAttribute('aria-label', 'brush: ' + (lightMode ? 'light' : 'dark') + '; double-tap to switch');
+        }
+      }
+
+      function toggleBrushMode() {
+        lightMode = !lightMode;
+        reflectBrushMode();
+        audio.contact(lightMode ? 'light' : 'dark', scenePan(pointer.x), 0.5);
+        try {
+          if (navigator.vibrate) navigator.vibrate(lightMode ? [10, 28, 14] : 12);
+        } catch (err) { /* vibration is optional */ }
+      }
+
+      canvas.addEventListener('pointerdown', function (e) {
+        if (e.button !== undefined && e.button !== 0 && e.button !== 2) return;
+        var isTouch = e.pointerType === 'touch';
+        // Mouse/pen keeps its single-pointer left/right behavior.
+        if (!isTouch && active.size > 0) return;
+        e.preventDefault();
+        unlockAudio();
+        lastActivity = performance.now();
+        dismissHintSoon();
+        pressTarget = 1;
+        nextPulse = time + 7 + Math.random() * 5;
+        stillMode = false;
+        document.body.classList.add('dragging');
+
+        var pos = toScene(e.clientX, e.clientY);
+        var now = performance.now();
+        var lone = active.size === 0;
+        var tapToggle = false;
+        if (isTouch) {
+          document.body.classList.add('touch');
+          if (lone && lastTapAt && now - lastTapAt < TAP_MS &&
+              Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 32) {
+            // Hold the flip until release: if this second touch turns into a
+            // drag, it should paint instead of switching the brush.
+            tapToggle = true;
+            lastTapAt = 0;
+            if (pendingTapBloom) {
+              clearTimeout(pendingTapBloom);
+              pendingTapBloom = 0;
+            }
+          }
+        }
+
+        var kind = isTouch ? (lightMode ? 'light' : 'dark') : (e.button === 2 ? 'light' : 'dark');
+
+        var state = {
+          id: e.pointerId,
+          kind: kind,
+          touch: isTouch,
+          lone: lone,
+          tapToggle: tapToggle,
+          sx: pos.x,
+          sy: pos.y,
+          x: pos.x,
+          y: pos.y,
+          px: e.clientX,
+          py: e.clientY,
+          moved: false,
+          seeded: false,
+          painting: false,
+          lastPaint: { x: pos.x, y: pos.y },
+          lastPaintAt: time,
+          lastLight: { x: pos.x, y: pos.y },
+          lastLightAt: time
+        };
+        active.set(e.pointerId, state);
+        if (!down) {
+          down = state;
+          user.x = pos.x;
+          user.y = pos.y;
+          hasMoved = true;
+          pointer.x = pos.x;
+          pointer.y = pos.y;
+        }
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        if (!tapToggle) audio.contact(kind, scenePan(pos.x), 0.75);
+        if (!isTouch && e.button !== 2) addMark(pos.x, pos.y, 0.125, 18, 0.90, 0.20);
+        syncActiveState();
+      });
+
+      window.addEventListener('pointermove', function (e) {
+        var state = active.get(e.pointerId);
+        if (!state) {
+          if (e.target !== canvas) return;
+          lastActivity = performance.now();
+          var hover = toScene(e.clientX, e.clientY);
+          user.x = hover.x;
+          user.y = hover.y;
+          hasMoved = true;
+          return;
+        }
+
+        lastActivity = performance.now();
+        var pos = toScene(e.clientX, e.clientY);
+        state.x = pos.x;
+        state.y = pos.y;
+
+        if (!state.moved && Math.hypot(e.clientX - state.px, e.clientY - state.py) > 7) {
+          state.moved = true;
+          state.painting = true;
+          state.tapToggle = false;
+        }
+
+        if (state === down) {
+          user.x = pos.x;
+          user.y = pos.y;
+          hasMoved = true;
+        }
+
+        if (state.painting) {
+          if (state.kind === 'light') {
+            if (!state.seeded) {
+              state.lastLight = null;
+              paintLightAt(state.sx, state.sy, state);
+              state.seeded = true;
+            }
+            paintLightAt(pos.x, pos.y, state);
+          } else {
+            if (!state.seeded) {
+              state.lastPaint = null;
+              paintAt(state.sx, state.sy, false, state);
+              state.seeded = true;
+            }
+            var from = state.lastPaint || { x: state.sx, y: state.sy };
+            var gap = Math.hypot(pos.x - from.x, pos.y - from.y);
+            var steps = Math.min(3, Math.max(1, Math.ceil(gap / 0.040)));
+            for (var st = 1; st < steps; st++) {
+              var f = st / steps;
+              paintAt(from.x + (pos.x - from.x) * f, from.y + (pos.y - from.y) * f, true, state);
+            }
+            paintAt(pos.x, pos.y, false, state);
+            if (sky && flowOK) gustAt(pos.x, pos.y, state);
+          }
+        }
+        syncActiveState();
+      }, { passive: true });
+
+      function release(e) {
+        var state = active.get(e.pointerId);
+        if (!state) return;
+        active.delete(e.pointerId);
+
+        if (down === state) {
+          down = null;
+          active.forEach(function (remaining) { if (!down) down = remaining; });
+          if (down) {
+            user.x = down.x;
+            user.y = down.y;
+            hasMoved = true;
+          }
+        }
+
+        if (!state.moved) {
+          if (state.tapToggle) {
+            if (e.type === 'pointerup' && active.size === 0) toggleBrushMode();
+          } else if (state.touch && state.lone && active.size === 0) {
+            // Hold the tap's bloom so a second tap can flip the brush instead.
+            lastTapAt = performance.now();
+            lastTapX = state.px;
+            lastTapY = state.py;
+            pendingTapKind = state.kind;
+            clearTimeout(pendingTapBloom);
+            pendingTapBloom = setTimeout(function () {
+              pendingTapBloom = 0;
+              lastTapAt = 0;
+              if (pendingTapKind === 'light') lightBloom(state.sx, state.sy);
+              else bloom(state.sx, state.sy);
+            }, TAP_BLOOM_MS);
+          } else if (state.kind === 'light') {
+            lightBloom(state.sx, state.sy);
+          } else {
+            bloom(state.sx, state.sy);
+          }
+        }
+
+        if (active.size === 0) {
+          painting = false;
+          pressTarget = 0;
+          document.body.classList.remove('dragging');
+        } else {
+          syncActiveState();
+        }
+      }
+
+      window.addEventListener('pointerup', release);
+      window.addEventListener('pointercancel', release);
+      window.addEventListener('blur', function () {
+        active.clear();
+        down = null;
+        painting = false;
+        pressTarget = 0;
+        document.body.classList.remove('dragging');
+        if (pendingTapBloom) { clearTimeout(pendingTapBloom); pendingTapBloom = 0; }
+        lastTapAt = 0;
+      });
+
+      moodButton.addEventListener('click', function () {
+        setMood(moodIndex + 1, false);
+        lastActivity = performance.now();
+      });
+
+      soundButton.addEventListener('click', function () {
+        setSound(!audio.wanted);
+        lastActivity = performance.now();
+      });
+
+      tuneButton.addEventListener('click', function () {
+        setTuneOpen(!document.body.classList.contains('tuning'));
+      });
+      panelClose.addEventListener('click', function () { setTuneOpen(false); });
+      rideButton.addEventListener('click', function () {
+        setRide(!ride);
+        lastActivity = performance.now();
+      });
+      skyButton.addEventListener('click', function () {
+        setSky(!sky);
+        lastActivity = performance.now();
+      });
+      [brushInput, trailInput, particlesInput, velocityInput, veilInput, curveInput, paceInput, ink0Input, ink1Input, ink2Input].forEach(function (input) {
+        input.addEventListener('input', tuneChanged);
+      });
+      stillButton.addEventListener('click', stillVeil);
+      writeButton.addEventListener('click', useWritePreset);
+      resetButton.addEventListener('click', resetTune);
+
+      document.addEventListener('keydown', function (e) {
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        var tag = e.target && e.target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        if (e.key === 'm' || e.key === 'M') {
+          setMood(moodIndex + 1, false);
+          e.preventDefault();
+        } else if (e.key === 't' || e.key === 'T') {
+          setTuneOpen(!document.body.classList.contains('tuning'));
+          e.preventDefault();
+        } else if (e.key === 'Escape') {
+          setTuneOpen(false);
+        } else if (e.key === 'c' || e.key === 'C') {
+          stillVeil();
+          e.preventDefault();
+        } else if (e.key === 's' || e.key === 'S') {
+          setSound(!audio.wanted);
+          e.preventDefault();
+        } else if (e.key === 'r' || e.key === 'R') {
+          setRide(!ride);
+          e.preventDefault();
+        } else if (e.key === 'p' || e.key === 'P') {
+          setPines(!pinesFine);
+          e.preventDefault();
+        } else if (e.key === 'k' || e.key === 'K') {
+          setSky(!sky);
+          e.preventDefault();
+        }
+      });
+
+      window.addEventListener('resize', resize);
+
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+          running = false;
+          cancelAnimationFrame(raf);
+          audio.suspend();
+        } else if (!running) {
+          running = true;
+          last = 0;
+          audio.resume();
+          raf = requestAnimationFrame(frame);
+        }
+      });
+
+      if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+        hint.innerHTML = 'drag: part &middot; double-tap: switch';
+        var panelHint = document.querySelector('.panel-hint');
+        if (panelHint) panelHint.innerHTML = 'drag &middot; part &nbsp; double-tap &middot; switch';
+      }
+
+
+      var savedSound = false;
+      try { savedSound = localStorage.getItem('opal.void.sound') === 'on'; } catch (e) { /* private */ }
+      if (!audio.supported) {
+        soundButton.disabled = true;
+        soundButton.title = 'sound unavailable';
+      } else if (savedSound) {
+        audio.wanted = true;
+      }
+      reflectSound();
+
+      var savedRide = false;
+      try { savedRide = localStorage.getItem('opal.void.ride') === 'on'; } catch (e) { /* private */ }
+      setRide(savedRide, true);
+      var savedPines = 'fine';
+      try { savedPines = localStorage.getItem('opal.void.pines') || 'fine'; } catch (e) { /* private */ }
+      setPines(savedPines !== 'classic', true);
+      pinesButton.addEventListener('click', function () { setPines(!pinesFine); });
+
+      // The sky is the default scene; the void is one tap of `sky` away.
+      var savedSky = true;
+      try { savedSky = localStorage.getItem('opal.void.sky') !== 'off'; } catch (e) { /* private */ }
+      setSky(savedSky, true);
+      skyAmount = sky ? 1 : 0;
+
+      function start() {
+        setMoodFromStore();
+        syncTuneControls();
+        writeInk();
+        reflectBrushMode();
+        initMaskTexture();
+        resize();
+        raf = requestAnimationFrame(frame);
+        hintTimer = setTimeout(function () { hint.classList.add('gone'); }, 11000);
+      }
+
+      start();
+    })();
+  </script>
+</body>
+</html>
+
+
+
