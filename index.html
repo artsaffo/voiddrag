@@ -553,7 +553,7 @@
     <button class="ride sky" id="sky" type="button" aria-pressed="true" aria-label="the night sky: on" title="the night sky (K)">
       <span class="ride-dot"></span><span>sky</span>
     </button>
-    <button class="ride" id="ride" type="button" aria-pressed="false" aria-label="ride beneath the pines: off" title="ride beneath the pines (R)">
+    <button class="ride" id="ride" type="button" aria-pressed="true" aria-label="ride beneath the pines: on" title="ride beneath the pines (R)">
       <span class="ride-dot"></span><span>ride</span>
     </button>
     <button class="tune" id="tune" type="button" aria-label="tune the field" aria-expanded="false" title="tune the field">tune</button>
@@ -585,9 +585,11 @@
 
       var MAX_MARKS = 512;
       var MAX_PARTICLES = 1200;
+      var MOTE_NEAR_SHARE = 0.02;   // under the sky: share of motes near enough to be out of focus
       var activeParticles = 600;
       var MAX_SHOCKS = 8;
-      var particleData = new Float32Array(MAX_PARTICLES * 3 * 4);
+      var PARTICLE_FLOATS = 6;      // per point: x, y, size, brightness, blur, moonlight
+      var particleData = new Float32Array(MAX_PARTICLES * 3 * PARTICLE_FLOATS);
       var particleBuffer = null;
       var particleVao = null;
       var particleProgram = null;
@@ -647,6 +649,20 @@
       var MOON_R = 0.123;         // keep in step with the shader's MOON_R
       var BRUSH_UNDER_MOON = 0.5; // cloud brush influence while the moon is the cursor
       var HEAL_UNDER_MOON = 2.8;  // parted cloud takes 2.8x as long to close while the moon is the cursor (1.4, then doubled)
+      // The moon keeps its clearing about three times as long as it used to.
+      // The cloud drifts on the wind, so slower healing alone would only let
+      // the clearing slide off the moon downwind: after a tap or a hold the
+      // moon goes on breathing the cloud back from its face, more and more
+      // faintly, and the cloud right around it heals more slowly too.
+      var MOON_BREATH_LIFE = 11;  // s: time constant of that lingering breath after a tap; a hold of 3 s or more, 1.5x this
+      var MOON_BREATH_GRIP = 0.08; // how hard it pushes at first (a held moon pushes 0.32)
+      var MOON_CLEAR_HOLD = 3.0;  // cloud near the moon heals this many times more slowly
+      var MOON_CLEAR_REACH = 0.70; // scene units: the full hold within 40% of this from the moon, none beyond it
+      var moonBreath = 0;
+      var moonBreathLife = MOON_BREATH_LIFE;
+      var moonPress = 0;          // the moon's own flare: it rises only while the moon itself is held
+      var moonLane = Math.random() * 4;
+      var lastMoonPuff = 0;
       var skyButton = document.getElementById('sky');
       var sky = true;
       var skyAmount = 1;
@@ -1494,6 +1510,12 @@ vec3 skyStars(vec2 s, float excite, float t) {
   return c;
 }
 
+// Has the wind moved, torn or stretched the cloud here at all? (flow from
+// the wind field: xy carried, z torn, w stretch, 1 = untouched.)
+bool windTouched(vec4 flow) {
+  return dot(flow.xy, flow.xy) > 1e-8 || flow.z > 1e-4 || abs(flow.w - 1.0) > 1e-3;
+}
+
 float cloudField(vec2 c, float t) {
   vec2 w = vec2(
     fbm(c * 0.85 + vec2(0.0, t * 0.012), 3),
@@ -1588,7 +1610,15 @@ vec3 skyScene(vec2 q, float maskRaw, vec4 flow, float excite, float light, float
   float det = clamp(flow.w, 0.0, 2.0);
   float thin = clamp(1.0 - det, 0.0, 1.0);
   float pile = clamp(det - 1.0, 0.0, 1.0);
-  density = clamp(density * mix(1.0, det, 0.6) + pile * 0.15, 0.0, 1.0);
+  // Wisps: fine texture carried with the cloud. Where the wind has stretched
+  // the cloud, the same stretch draws it out into streamers along the pull.
+  // Cloud the wind has not touched does not need it (0.5 changes nothing).
+  float wisp = 0.5;
+  if (uFlowOn > 0.5 && windTouched(flow)) wisp = fbm(c * vec2(15.0, 12.0) + vec2(t * 0.006, -t * 0.004), 2);
+  float strand = smoothstep(0.36, 0.64, wisp);
+  // Bunched cloud gathers in broken ridges, not a smooth bead around the gap.
+  pile *= 0.25 + 1.20 * strand;
+  density = clamp(density * mix(1.0, det, 0.45) + pile * 0.08, 0.0, 1.0);
   float fine = fbm(c * 4.2 + vec2(-t * 0.010, t * 0.006), 3);
   float haze = 0.935 + 0.05 * horizon;
   float veil = 1.0 - (1.0 - haze) * (1.0 - density * 0.995);
@@ -1602,8 +1632,12 @@ vec3 skyScene(vec2 q, float maskRaw, vec4 flow, float excite, float light, float
     // Stretched cloud thins in proportion to the stretch, ragged with its own
     // texture; only a hard gust tears it clean through.
     float stretch = thin * (0.75 + 0.55 * (edgeN - 0.5) + 0.45 * (0.5 - n));
-    float torn = smoothstep(0.15, 0.95, flow.z + (edgeN - 0.5) * 0.35 - density * 0.15);
+    float torn = smoothstep(0.15, 0.95, flow.z + (edgeN - 0.5) * 0.35 + (wisp - 0.5) * 0.45 * smoothstep(0.0, 0.3, flow.z) - density * 0.15);
     part = clamp(max(stretch * 1.15, torn), 0.0, 1.0);
+    // Fray: half-parted cloud breaks into strands instead of fading evenly,
+    // so the edge of a clearing is feathered like windblown cloud.
+    float fray = part * (1.0 - part) * 4.0;
+    part = clamp(part + (strand - 0.5) * 0.95 * fray, 0.0, 1.0);
   } else {
     float pv = maskRaw * 1.35 - uErode * 0.55 + (edgeN - 0.5) * 0.62 + (0.5 - n) * 0.55 - density * 0.12;
     part = smoothstep(0.10, 0.85, pv);
@@ -1616,16 +1650,18 @@ vec3 skyScene(vec2 q, float maskRaw, vec4 flow, float excite, float light, float
   vec3 tint = uPal[3] / max(dot(uPal[3], vec3(0.3333)), 1e-4);
   vec3 hazeCol = mix(vec3(0.0042, 0.0046, 0.0060), vec3(0.0170, 0.0135, 0.0110), horizon);
   vec3 cloudCol = mix(vec3(0.0150, 0.0156, 0.0182), vec3(0.0420, 0.0320, 0.0235), horizon);
-  cloudCol *= (0.45 + 0.95 * density + 0.45 * (fine - 0.5)) * (1.0 + pile * 0.25);
+  cloudCol *= (0.45 + 0.95 * density + 0.45 * (fine - 0.5)) * (1.0 + pile * 0.12);
   vec3 overCol = mix(hazeCol, cloudCol, density);
   overCol = mix(overCol, overCol * tint, 0.35);
   overCol *= 0.75 + 0.5 * uVeil;
 
   vec3 col = mix(sky, overCol, opacity);
 
-  // A faint silver lining where the cloud has just been pulled thin.
+  // A faint silver lining where the cloud has just been pulled thin: only
+  // some strands catch it, so the gap has no glossy lip.
   float rim = part * (1.0 - part) * 4.0 * veil;
-  col += overCol * rim * (0.18 + 0.30 * fine);
+  if (uFlowOn > 0.5) rim *= strand;
+  col += overCol * rim * (0.12 + 0.26 * fine);
 
   // Moonlight through the cloud: haze lets the disc through, thick cloud only
   // a dim smudge of it. The cloud near the moon is lit, thin edges brightest,
@@ -1641,6 +1677,78 @@ vec3 skyScene(vec2 q, float maskRaw, vec4 flow, float excite, float light, float
   col += mix(vec3(0.050, 0.047, 0.043), inkRamp(0.82) * 0.06, 0.4) * light * (0.25 + 0.75 * opacity);
 
   return col;
+}
+
+// ---------------------------------------------------------------------------
+// A rare flyer: now and then a bat flits across under the cloud, or an owl
+// glides over. Both are silhouettes seen from below, in their own frame:
+// flying toward +x, wingspan 1. st is the wing stroke: 1 at mid-downstroke,
+// when the wings are spread widest, -1 at mid-upstroke.
+uniform vec4 uFly[2];    // xy: position, z: heading, w: wingspan (0 = none)
+uniform vec4 uFlyB[2];   // x: wing stroke, y: 0 bat / 1 owl, z: opacity
+
+float batShape(vec2 p, float st, float aa) {
+  float hs = 0.5 * (0.66 + 0.34 * st);          // half-span: folded on the upstroke
+  float sweep = 0.06 * (0.5 - 0.5 * st);        // and the tips swept back
+  float ay = abs(p.y);
+  float s = ay / hs;
+  float cov = 0.0;
+  if (s < 1.0) {
+    // The arm runs forward to the wrist, the long finger back to the tip;
+    // behind, the membrane bows in between the finger tips.
+    float le = 0.045 + 0.23 * s - 0.30 * s * s - sweep * s;
+    float te = -0.135 + 0.110 * s - sweep * s;
+    float seg = s < 0.50 ? s / 0.50 : (s < 0.77 ? (s - 0.50) / 0.27 : (s - 0.77) / 0.23);
+    float bow = s < 0.50 ? 0.055 : (s < 0.77 ? 0.045 : 0.034);
+    te += bow * pow(sin(3.14159 * seg), 0.8);
+    cov = smoothstep(-aa, aa, min(p.x - te, le - p.x));
+  }
+  float body = (length((p - vec2(-0.015, 0.0)) / vec2(0.110, 0.048)) - 1.0) * 0.048;
+  float head = length(p - vec2(0.105, 0.0)) - 0.038;
+  vec3 e = segT(vec2(p.x, ay), vec2(0.115, 0.014), vec2(0.172, 0.036));
+  float ear = e.x - 0.013 * (1.0 - e.y);
+  // The tail membrane between the legs, its edge cut in a shallow curve.
+  float tend = -0.17 + 0.045 * (1.0 - (ay / 0.05) * (ay / 0.05));
+  float tail = max(max(tend - p.x, p.x + 0.06), ay - 0.05);
+  float sd = min(min(body, head), min(ear, tail));
+  return max(cov, smoothstep(aa, -aa, sd));
+}
+
+float owlShape(vec2 p, float st, float aa) {
+  float hs = 0.5 * (0.82 + 0.18 * st);          // an owl hardly folds its wings
+  float ay = abs(p.y);
+  float s = ay / hs;
+  float cov = 0.0;
+  if (s < 1.0) {
+    // Broad, nearly square-cut wings, bent forward at the wrist, with a
+    // blunt hand whose fingers spread at the tip.
+    float le = 0.060 + 0.060 * s - 0.090 * s * s;
+    float te = -0.130 + 0.010 * s + 0.020 * s * s;
+    float wide = 0.5 * (le - te) * sqrt(max(0.0, 1.0 - pow(s, 6.0)));
+    float mid = 0.5 * (le + te);
+    float slots = smoothstep(0.76, 0.90, s) * (0.5 + 0.5 * cos((p.x - te) / max(le - te, 1e-3) * 31.4));
+    cov = smoothstep(-aa, aa, wide - abs(p.x - mid) - slots * 0.024);
+  }
+  float body = (length((p - vec2(-0.030, 0.0)) / vec2(0.120, 0.066)) - 1.0) * 0.066;
+  float head = length(p - vec2(0.100, 0.0)) - 0.066;
+  float tx = clamp((-0.120 - p.x) / 0.090, 0.0, 1.0);
+  float tail = max(max(ay - (0.034 + 0.034 * tx), p.x + 0.120), -0.210 - p.x);
+  return max(cov, smoothstep(aa, -aa, min(min(body, head), tail)));
+}
+
+float flyers(vec2 q) {
+  float cov = 0.0;
+  for (int i = 0; i < 2; i++) {
+    vec4 f = uFly[i];
+    if (f.w <= 0.0) continue;
+    vec2 d = q - f.xy;
+    if (dot(d, d) > f.w * f.w * 0.30) continue;
+    vec2 p = rot(f.z) * d / f.w;
+    float aa = 1.6 / (min(uRes.x, uRes.y) * f.w);
+    float s = uFlyB[i].y < 0.5 ? batShape(p, uFlyB[i].x, aa) : owlShape(p, uFlyB[i].x, aa);
+    cov = max(cov, s * uFlyB[i].z);
+  }
+  return cov;
 }
 
 void main() {
@@ -1677,6 +1785,15 @@ void main() {
     if (uFlowOn > 0.5) {
       vec2 fuv = vec2((q.x - uDrift) / (2.0 * maskExtent.x) + 0.5, q.y / (2.0 * maskExtent.y) + 0.5);
       flow = texCubic(uFlow, fuv);
+      // Where the wind has been at work, the flow is looked up again through
+      // a little turbulence carried with the cloud, so the outline of a
+      // clearing frays instead of running as one smooth curve. Untouched sky
+      // skips this (phones are short of time per frame).
+      if (windTouched(flow)) {
+        vec2 wq = vec2(q.x - uDrift, q.y);
+        vec2 jag = vec2(vnoise(wq * 11.0 + 3.1), vnoise(wq * 11.0 + vec2(7.7, 1.3))) - 0.5;
+        flow = texCubic(uFlow, fuv + jag * 0.070 / (2.0 * maskExtent));
+      }
       float wind = length(texCubic(uWind, fuv).xy);
       excite = 1.0 - exp(-(wind * 1.4 + flow.z * 0.6 + length(flow.xy) * 1.0));
     }
@@ -1690,6 +1807,12 @@ void main() {
     vec2 vg = moonGlow(q);
     vec3 vcol = mix(col, vm.rgb * 0.55, vm.a * uMoonOn * 0.8) + MOON_LIGHT * (vg.x * 0.016 + vg.y * 0.004);
     col = mix(vcol, col, uSky);
+  }
+
+  // A rare flyer passes under the cloud: a dark shape against cloud and
+  // moon, nearly lost against clear sky, and behind the pines.
+  if (uSky > 0.001 && (uFly[0].w > 0.0 || uFly[1].w > 0.0)) {
+    col = mix(col, vec3(0.0010, 0.0010, 0.0014), flyers(q) * uSky);
   }
 
   // The pines pass in front of everything in the sky, painted dark included.
@@ -1731,12 +1854,13 @@ void main() {
   fragColor = vec4(finish(col, uv), 1.0);
 }`;
 
-      // The wind field under the sky. Two small passes run each frame on a
-      // 256x128 grid laid over the sky in wind space (the same space and wrap
-      // as the mask). The velocity pass carries a gust along, curls it and
-      // lets it die out. The map pass tracks, for every cell, how far the
-      // cloud now there was carried from (rg), how much a hard gust has torn
-      // it (b), and how stretched or bunched it is (a: >1 bunched, <1 thinned).
+      // The wind field under the sky. Three small passes run each frame on a
+      // grid laid over the sky in wind space (the same space and wrap as the
+      // mask; see flowDims). The velocity pass carries a gust along, curls it
+      // and lets it die out. The map pass tracks, for every cell, how far the
+      // cloud now there was carried from (rg) and how much a hard gust has
+      // torn it (b). The view pass hands both to the sky together with how
+      // stretched or bunched the cloud is (a: >1 bunched, <1 thinned).
       var simCommon = `#version 300 es
 precision highp float;
 out vec4 o;
@@ -1781,52 +1905,49 @@ float splatShape(vec2 x, int i, out vec2 d) {
   return exp(-perp * perp / (r * r) - along * along / (l * l));
 }
 
-// Brush grain: a fractal of Voronoi cell walls, fixed in wind space. A gust
-// pushes hard inside the cells and barely at their walls, so the cloud shears
-// into strands from the first moment instead of sliding as one smooth slab.
-// Columns of cells wrap with the wind, so there is no seam.
-vec2 hash22(vec2 p) {
-  p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
-  return fract(sin(p) * 43758.5453);
-}
-float cellWall(vec2 p, float nx) {
-  vec2 i = floor(p);
-  vec2 f = p - i;
-  float f1 = 8.0;
-  float f2 = 8.0;
-  for (int y = -1; y <= 1; y++) {
-    for (int x = -1; x <= 1; x++) {
-      vec2 o = vec2(float(x), float(y));
-      vec2 id = i + o;
-      id.x = mod(id.x, nx);
-      vec2 r = o + hash22(id) - f;
-      float d = dot(r, r);
-      if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) { f2 = d; }
-    }
+// Streamers: a gust pushes hard along narrow lanes that run with it and
+// barely between them, so wind combs the cloud into strands instead of
+// shoving it aside as one smooth, liquid slab. A puff with no direction combs
+// rays out from its centre. b.w shifts the lanes, so a whole stroke shares
+// one set of them. Lanes are measured from the gust itself, so they never
+// meet the seam where the wind space wraps.
+float streamers(vec2 d, vec4 b) {
+  float spd = length(b.xy);
+  float n;
+  if (spd > 1e-4) {
+    vec2 dir = b.xy / spd;
+    float along = dot(d, dir);
+    float across = dot(d, vec2(-dir.y, dir.x)) + b.w;
+    n = vnoise(vec2(across * 27.0, along * 2.4 + b.w * 11.0)) * 0.68
+      + vnoise(vec2(across * 53.0 + 5.1, along * 4.6 - b.w * 7.0)) * 0.32;
+  } else {
+    float r = length(d);
+    vec2 u = d / max(r, 1e-4);
+    n = vnoise(u * 4.6 + vec2(b.w * 13.0, r * 0.9)) * 0.68
+      + vnoise(u * 9.5 + vec2(r * 1.6, b.w * 5.0 + 3.7)) * 0.32;
   }
-  return sqrt(f2) - sqrt(f1);
+  // About 1 on average: from a near standstill between lanes to a hard
+  // shove along them.
+  return mix(1.0, 0.10 + 1.80 * smoothstep(0.24, 0.76, n), 0.78);
 }
-float grainAt(vec2 x) {
+
+// Eddies: the curl of a few slow waves crossing at odd angles. Value noise
+// would leave its lattice in the air as rows and columns (its slope vanishes
+// along every grid line), and the waves are made to repeat exactly across
+// the wind space, so the eddies have no seam either.
+float eddy(vec2 w, float t) {
   float per = 2.0 * uExt.x;
-  vec2 w = vec2(x.x - per * floor(x.x / per), x.y);
-  float g = 0.0;
-  float amp = 1.0;
-  float tot = 0.0;
-  float base = 8.0;
-  for (int k = 0; k < 3; k++) {
-    float n = max(1.0, floor(base * per + 0.5));
-    g += amp * smoothstep(0.0, 0.42, cellWall(w * (n / per) + vec2(0.0, float(k) * 17.3), n));
-    tot += amp;
-    amp *= 0.6;
-    base *= 2.1;
+  float s = 0.0;
+  for (int k = 0; k < 5; k++) {
+    float fk = float(k);
+    float ang = 0.37 + fk * 2.39996;               // golden-angle spread
+    float kl = 6.28318 / (0.36 + 0.07 * fk);       // wavelengths 0.36..0.64
+    float kx = kl * cos(ang);
+    kx = 6.28318 * floor(per * kx / 6.28318 + 0.5) / per;
+    float ky = kl * sin(ang);
+    s += sin(kx * w.x + ky * w.y + t * (0.13 + 0.05 * fk) + fk * 1.7) / kl;
   }
-  return g / tot;
-}
-// Applies the grain to a gust's bell; grain is computed once per cell.
-float grained(float sh, vec2 x, inout float grain) {
-  if (sh < 0.003) return sh;
-  if (grain < 0.0) grain = grainAt(x);
-  return sh * mix(1.0, 0.12 + 1.15 * grain, 0.8);
+  return s;
 }
 
 float calmAt(vec2 x) {
@@ -1851,115 +1972,172 @@ void main() {
   v = texture(uVel, bk).xy;
   vec2 nb = texture(uVel, bk + vec2(g.x, 0.0)).xy + texture(uVel, bk - vec2(g.x, 0.0)).xy
           + texture(uVel, bk + vec2(0.0, g.y)).xy + texture(uVel, bk - vec2(0.0, g.y)).xy;
-  v = mix(v, nb * 0.25, 0.30);
+  // Thin air: a little viscosity, not so much that a gust flows like syrup.
+  v = mix(v, nb * 0.25, 0.18);
 
-  // Eddies: a slowly changing curl noise, felt only where air is moving.
+  // Eddies, felt only where air is moving.
   vec2 w = (uv - 0.5) * 2.0 * uExt;
   float e = 0.03;
-  vec2 np = w * 2.6 + vec2(uTime * 0.11, -uTime * 0.07);
-  float nU = vnoise(np + vec2(0.0, e * 2.6));
-  float nD = vnoise(np - vec2(0.0, e * 2.6));
-  float nR = vnoise(np + vec2(e * 2.6, 0.0));
-  float nL = vnoise(np - vec2(e * 2.6, 0.0));
-  vec2 curl = vec2(nU - nD, -(nR - nL)) / (2.0 * e);
-  v += curl * length(v) * 0.22 * uDt;
+  vec2 curl = vec2(eddy(w + vec2(0.0, e), uTime) - eddy(w - vec2(0.0, e), uTime),
+                   -(eddy(w + vec2(e, 0.0), uTime) - eddy(w - vec2(e, 0.0), uTime))) / (2.0 * e);
+  v += curl * length(v) * 0.24 * uDt;
 
   vec2 x = toScene(uv);
-  float grain = -1.0;
   for (int i = 0; i < 16; i++) {
     if (i >= uSplats) break;
     vec2 d;
-    float sh = grained(splatShape(x, i, d) * uSplatA[i].w, x, grain);
+    float sh = splatShape(x, i, d) * uSplatA[i].w;
+    if (sh < 0.003) continue;
+    float lane = streamers(d, uSplatB[i]);
+    sh *= lane;
     vec2 vel = uSplatB[i].xy;
     float spd = length(vel);
     // The air is pushed along the stroke and spills out to either side,
-    // which is what pulls the cloud thin behind it.
+    // which is what pulls the cloud thin behind it. Along the fast lanes it
+    // also moves faster, so a steady push still leaves the cloud in strands
+    // and the edge of a puff's clearing in fingers.
     vec2 radial = d / max(length(d), 1e-4);
     vec2 side = radial;
     if (spd > 1e-4) {
       vec2 nrm = vec2(-vel.y, vel.x) / spd;
       side = nrm * sign(dot(d, nrm)) * smoothstep(0.0, uSplatA[i].z * 0.6, abs(dot(d, nrm)));
     }
-    vec2 target = vel * 1.0 + side * spd * 0.16 + radial * uSplatB[i].z;
+    vec2 target = (vel * 1.0 + side * spd * 0.16 + radial * uSplatB[i].z) * mix(1.0, lane, 0.5);
     v = mix(v, target, clamp(sh, 0.0, 1.0));
   }
 
   float calm = calmAt(x);
   v *= exp(-uDt * (1.15 + calm * 6.0));
+  // Gusts die out at the left and right edges of the view instead of
+  // wrapping round and stirring cloud on the far side.
+  float per = 2.0 * uExt.x;
+  float sx = x.x - per * floor(x.x / per + 0.5);
+  float inside = 1.0 - smoothstep(uExt.x - 0.22, uExt.x, abs(sx));
+  v *= mix(exp(-uDt * 9.0), 1.0, inside);
   float sp = length(v);
-  if (sp > 4.0) v *= 4.0 / sp;
+  if (sp > 3.0) v *= 3.0 / sp;
   o = vec4(v, 0.0, 1.0);
 }`;
 
+      // The map is kept at full float precision. Healing shrinks it by well
+      // under a thousandth per frame, which is below what a half float can
+      // resolve: the rounding then depended on each value's size, x and y
+      // separately, and the clearing healed into a plaid of rows and columns.
+      // Not every device can filter full floats, so the map is filtered by
+      // hand here and handed to the sky through a half-float copy (viewSource).
       var mapSource = simCommon + `
 uniform sampler2D uVel;
 uniform sampler2D uMap;
 uniform float uRelax;
+uniform vec4 uMoonZone;   // xy: the moon, z: how far its hold reaches, w: extra hold (0 = none)
+
+vec4 mapAt(vec2 uv) {
+  vec2 p = uv * uGrid - 0.5;
+  vec2 i = floor(p);
+  vec2 f = p - i;
+  int x0 = int(mod(i.x, uGrid.x));
+  int x1 = int(mod(i.x + 1.0, uGrid.x));
+  int ytop = int(uGrid.y) - 1;
+  int y0 = clamp(int(i.y), 0, ytop);
+  int y1 = clamp(int(i.y) + 1, 0, ytop);
+  vec4 a = texelFetch(uMap, ivec2(x0, y0), 0);
+  vec4 b = texelFetch(uMap, ivec2(x1, y0), 0);
+  vec4 c = texelFetch(uMap, ivec2(x0, y1), 0);
+  vec4 d = texelFetch(uMap, ivec2(x1, y1), 0);
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
 void main() {
   vec2 uv = gl_FragCoord.xy / uGrid;
   vec2 v = texture(uVel, uv).xy;
   vec2 bk = uv - uvDelta(v * uDt);
   vec2 g = 1.0 / uGrid;
-  vec4 m = texture(uMap, bk);
-  vec2 nb = texture(uMap, bk + vec2(g.x, 0.0)).xy + texture(uMap, bk - vec2(g.x, 0.0)).xy
-          + texture(uMap, bk + vec2(0.0, g.y)).xy + texture(uMap, bk - vec2(0.0, g.y)).xy;
-  vec2 disp = mix(m.xy, nb * 0.25, 0.12) + v * uDt;
+  vec4 m = mapAt(bk);
+  vec2 nb = mapAt(bk + vec2(g.x, 0.0)).xy + mapAt(bk - vec2(g.x, 0.0)).xy
+          + mapAt(bk + vec2(0.0, g.y)).xy + mapAt(bk - vec2(0.0, g.y)).xy;
+  vec2 disp = mix(m.xy, nb * 0.25, 0.08) + v * uDt;
   float tear = m.z;
 
   vec2 x = toScene(uv);
-  float grain = -1.0;
   for (int i = 0; i < 16; i++) {
     if (i >= uSplats) break;
     vec2 d;
-    float sh = grained(splatShape(x, i, d) * uSplatA[i].w, x, grain);
+    float sh = splatShape(x, i, d) * uSplatA[i].w;
+    if (sh < 0.003) continue;
+    sh *= streamers(d, uSplatB[i]);
     float spd = length(uSplatB[i].xy);
-    tear += sh * (smoothstep(1.2, 3.6, spd) * 0.16 + uSplatB[i].z * 0.12);
+    tear += sh * (smoothstep(0.9, 2.4, spd) * 0.14 + uSplatB[i].z * 0.12);
   }
 
+  // Parted cloud closes back over by itself. Around the moon it holds off
+  // longer (uMoonZone.w + 1 times as long), so the moon keeps its clearing.
   float calm = calmAt(x);
-  disp *= exp(-uDt * (1.0 / uRelax + calm * 1.6));
-  tear *= exp(-uDt * (1.0 / (uRelax * 0.55) + calm * 3.0));
+  float md = length(wrapD(x - uMoonZone.xy));
+  float hold = 1.0 + uMoonZone.w * (1.0 - smoothstep(uMoonZone.z * 0.4, uMoonZone.z, md));
+  disp *= exp(-uDt * (1.0 / (uRelax * hold) + calm * 1.6));
+  tear *= exp(-uDt * (1.0 / (uRelax * 0.55 * hold) + calm * 3.0));
   float dl = length(disp);
   if (dl > 0.55) disp *= 0.55 / dl;
 
-  // Stretch: area the cloud here came from, per unit area now.
-  vec2 tx = vec2(1.0 / uGrid.x, 0.0);
-  vec2 ty = vec2(0.0, 1.0 / uGrid.y);
-  vec2 hx = vec2(4.0 * uExt.x / uGrid.x);
-  vec2 hy = vec2(4.0 * uExt.y / uGrid.y);
-  vec2 ddx = (texture(uMap, uv + tx).xy - texture(uMap, uv - tx).xy) / hx;
-  vec2 ddy = (texture(uMap, uv + ty).xy - texture(uMap, uv - ty).xy) / hy;
-  float det = (1.0 - ddx.x) * (1.0 - ddy.y) - ddy.x * ddx.y;
+  o = vec4(disp, clamp(tear, 0.0, 1.0), 0.0);
+}`;
 
-  o = vec4(disp, clamp(tear, 0.0, 1.0), clamp(det, -1.0, 3.0));
+      // The sky's copy of the map, in a format every device can filter, with
+      // the stretch worked out from the full-precision map: the area the
+      // cloud here came from per unit area now (a: < 1 thinned, > 1 bunched).
+      var viewSource = simCommon + `
+uniform sampler2D uMap;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy);
+  ivec2 n = ivec2(uGrid);
+  vec4 m = texelFetch(uMap, c, 0);
+  int xl = c.x == 0 ? n.x - 1 : c.x - 1;
+  int xr = c.x == n.x - 1 ? 0 : c.x + 1;
+  int yd = max(c.y - 1, 0);
+  int yu = min(c.y + 1, n.y - 1);
+  float hx = 4.0 * uExt.x / uGrid.x;
+  float hy = float(yu - yd) * 2.0 * uExt.y / uGrid.y;
+  vec2 ddx = (texelFetch(uMap, ivec2(xr, c.y), 0).xy - texelFetch(uMap, ivec2(xl, c.y), 0).xy) / hx;
+  vec2 ddy = (texelFetch(uMap, ivec2(c.x, yu), 0).xy - texelFetch(uMap, ivec2(c.x, yd), 0).xy) / hy;
+  float det = (1.0 - ddx.x) * (1.0 - ddy.y) - ddy.x * ddx.y;
+  o = vec4(m.xy, m.z, clamp(det, -1.0, 3.0));
 }`;
 
       var particleVertexSource = `#version 300 es
 in vec2 aPos;
 in float aSize;
 in float aBright;
+in vec2 aLook;      // x: out of focus (0..1), y: moonlit silver (0..1)
 uniform vec2 uRes;
 out float vBright;
 out float vTint;
+out vec2 vLook;
 void main() {
   gl_Position = vec4(aPos * 2.0 - 1.0, 0.0, 1.0);
   gl_PointSize = max(1.5, aSize * uRes.y);
   vBright = aBright;
   vTint = fract(aSize * 317.0);
+  vLook = aLook;
 }`;
 
       var particleFragmentSource = `#version 300 es
 precision highp float;
 in float vBright;
 in float vTint;
+in vec2 vLook;
 uniform vec3 uPal[5];
 uniform float uDim;
 out vec4 fragColor;
 void main() {
   vec2 d = gl_PointCoord - 0.5;
-  float a = smoothstep(0.5, 0.0, length(d));
+  float r = length(d) * 2.0;
+  float a = 1.0 - smoothstep(0.0, 1.0, r);
   a = a * (0.65 + 0.35 * a);
+  // Out of focus, a mote is a faint, soft-edged disc.
+  float disc = 1.0 - smoothstep(0.35, 1.0, r);
+  a = mix(a, disc, vLook.x);
   vec3 c = mix(uPal[3], uPal[4], vTint * 0.65);
+  c = mix(c, vec3(0.86, 0.89, 0.97), vLook.y);
   fragColor = vec4(c, a * vBright * uDim);
 }`;
 
@@ -2551,6 +2729,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         particleAttribs.pos = gl.getAttribLocation(particleProgram, 'aPos');
         particleAttribs.size = gl.getAttribLocation(particleProgram, 'aSize');
         particleAttribs.bright = gl.getAttribLocation(particleProgram, 'aBright');
+        particleAttribs.look = gl.getAttribLocation(particleProgram, 'aLook');
         particleUniforms.res = gl.getUniformLocation(particleProgram, 'uRes');
         particleUniforms.pal = gl.getUniformLocation(particleProgram, 'uPal');
         particleUniforms.dim = gl.getUniformLocation(particleProgram, 'uDim');
@@ -2570,12 +2749,15 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         particleBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, particleData, gl.DYNAMIC_DRAW);
+        var stride = PARTICLE_FLOATS * 4;
         gl.enableVertexAttribArray(particleAttribs.pos);
-        gl.vertexAttribPointer(particleAttribs.pos, 2, gl.FLOAT, false, 16, 0);
+        gl.vertexAttribPointer(particleAttribs.pos, 2, gl.FLOAT, false, stride, 0);
         gl.enableVertexAttribArray(particleAttribs.size);
-        gl.vertexAttribPointer(particleAttribs.size, 1, gl.FLOAT, false, 16, 8);
+        gl.vertexAttribPointer(particleAttribs.size, 1, gl.FLOAT, false, stride, 8);
         gl.enableVertexAttribArray(particleAttribs.bright);
-        gl.vertexAttribPointer(particleAttribs.bright, 1, gl.FLOAT, false, 16, 12);
+        gl.vertexAttribPointer(particleAttribs.bright, 1, gl.FLOAT, false, stride, 12);
+        gl.enableVertexAttribArray(particleAttribs.look);
+        gl.vertexAttribPointer(particleAttribs.look, 2, gl.FLOAT, false, stride, 16);
         gl.bindVertexArray(vao);
         initParticles();
       }
@@ -2617,17 +2799,20 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           gl.deleteShader(a);
           gl.deleteShader(b);
           if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr) || 'flow link error');
-          var names = ['uGrid', 'uExt', 'uDt', 'uTime', 'uDrift', 'uSplatA', 'uSplatB', 'uSplats', 'uLights', 'uVel', 'uMap', 'uRelax'];
+          var names = ['uGrid', 'uExt', 'uDt', 'uTime', 'uDrift', 'uSplatA', 'uSplatB', 'uSplats', 'uLights', 'uVel', 'uMap', 'uRelax', 'uMoonZone'];
           var u = {};
           names.forEach(function (n) { u[n] = gl.getUniformLocation(pr, n); });
           return { p: pr, u: u };
         }
-        function target(clearA) {
+        // full: a full-float target (the map), read with texelFetch only.
+        // Otherwise half float with linear filtering (the air, and the sky's view).
+        function target(clearA, full) {
           var tex = gl.createTexture();
           gl.bindTexture(gl.TEXTURE_2D, tex);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, FLOW_W, FLOW_H, 0, gl.RGBA, gl.HALF_FLOAT, null);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          if (full) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, FLOW_W, FLOW_H, 0, gl.RGBA, gl.FLOAT, null);
+          else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, FLOW_W, FLOW_H, 0, gl.RGBA, gl.HALF_FLOAT, null);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, full ? gl.NEAREST : gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, full ? gl.NEAREST : gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
           var fb = gl.createFramebuffer();
@@ -2641,15 +2826,18 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         var f = {
           vel: prog(velSource),
           map: prog(mapSource),
+          view: prog(viewSource),
           v: [target(0), target(0)],
-          m: [target(1), target(1)],
+          m: [target(0, true), target(0, true)],
+          sky: target(1),
           cur: 0,
           w: FLOW_W,
           h: FLOW_H,
           rebuild: function () {
-            f.v.concat(f.m).forEach(function (t) { gl.deleteFramebuffer(t.fb); gl.deleteTexture(t.tex); });
+            f.v.concat(f.m, [f.sky]).forEach(function (t) { gl.deleteFramebuffer(t.fb); gl.deleteTexture(t.tex); });
             f.v = [target(0), target(0)];
-            f.m = [target(1), target(1)];
+            f.m = [target(0, true), target(0, true)];
+            f.sky = target(1);
             f.cur = 0;
             f.w = FLOW_W;
             f.h = FLOW_H;
@@ -2685,7 +2873,9 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         flow: gl.getUniformLocation(program, 'uFlow'),
         flowOn: gl.getUniformLocation(program, 'uFlowOn'),
         wind: gl.getUniformLocation(program, 'uWind'),
-        moonOn: gl.getUniformLocation(program, 'uMoonOn')
+        moonOn: gl.getUniformLocation(program, 'uMoonOn'),
+        fly: gl.getUniformLocation(program, 'uFly'),
+        flyB: gl.getUniformLocation(program, 'uFlyB')
       };
 
       var markData = new Float32Array(MAX_MARKS * 4);
@@ -2945,22 +3135,50 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         var sp = Math.hypot(moonVel.x, moonVel.y);
         if (sp > 0.015) {
           addGust(pointer.x, pointer.y, moonVel.x * MOON_PUSH, moonVel.y * MOON_PUSH,
-            MOON_R * 1.4, 0.55 * moonAmount * Math.min(1, sp / 0.14), 0);
+            MOON_R * 1.4, 0.55 * moonAmount * Math.min(1, sp / 0.14), 0, moonLane);
+          if (time - lastMoonPuff > 0.06) {
+            addPuff(pointer.x, pointer.y, moonVel.x * MOON_PUSH * 0.5, moonVel.y * MOON_PUSH * 0.5, MOON_R * 1.6, 0);
+            lastMoonPuff = time;
+          }
         }
-        if (moonGrab && press > 0.05) addGust(pointer.x, pointer.y, 0, 0, MOON_R * 1.8, 0.32 * press * moonAmount, 0.55);
+        if (moonGrab && moonPress > 0.05) {
+          // The held moon breathes the cloud back from its face in slow swells.
+          var swell = 0.80 + 0.20 * Math.sin(time * 1.7 + moonLane * 3.0);
+          addGust(pointer.x, pointer.y, 0, 0, MOON_R * 1.8, 0.32 * moonPress * moonAmount * swell, 0.55, moonLane);
+          if (time - lastMoonPuff > 0.10) {
+            addPuff(pointer.x, pointer.y, 0, 0, MOON_R * 2.2, 0.35 * moonPress);
+            lastMoonPuff = time;
+          }
+        } else if (moonBreath > 0.02) {
+          // After a tap or a hold: the lingering breath (MOON_BREATH_*).
+          addGust(pointer.x, pointer.y, 0, 0, MOON_R * 1.7, MOON_BREATH_GRIP * moonBreath * moonAmount, 0.45, moonLane);
+        }
       }
 
-      function addGust(x, y, vx, vy, radius, strength, radial) {
+      // lane: shifts the gust's streamers (see the sim's streamers()), so the
+      // splats of one stroke comb the cloud into one consistent set of strands.
+      function addGust(x, y, vx, vy, radius, strength, radial, lane) {
         if (gusts.length >= MAX_GUSTS) gusts.shift();
-        gusts.push([x, y, radius, strength, vx, vy, radial || 0]);
+        gusts.push([x, y, radius, strength, vx, vy, radial || 0, lane || 0]);
       }
 
-      // A drag pushes air in the direction it moves, as hard as it moves:
-      // a slow drag barely stirs the cloud, a flick tears through it.
+      // --- Wind brush tuning ------------------------------------------------
+      var GUST_TOP = 1.45;        // fastest air a drag can push, scene units/s
+      var GUST_KNEE = 1.5;        // drag speed (units/s) at which the push reaches ~63% of GUST_TOP
+      var GUST_GRIP_FAST = 0.10;  // fast air grips the cloud less: grip / (1 + this * speed)
+      var GUST_BREATH = 0.16;     // how much a fast stroke swells and slackens, per unit of speed (max 0.75)
+
+      // A drag pushes air the way it moves. A slow drag barely stirs the cloud;
+      // a faster one pushes harder, but the push levels off and comes in
+      // breaths, swelling and slackening along the stroke, scattered a little
+      // to either side, so a flick reads as a gust and not as a blade.
       function gustAt(x, y, state) {
         var now = performance.now();
         if (state.gx === undefined) {
           state.gx = x; state.gy = y; state.gt = now; state.gvx = 0; state.gvy = 0;
+          state.gseed = Math.random() * 50;
+          state.glane = Math.random() * 4;
+          state.gpow = 0.80 + Math.random() * 0.30;
           return;
         }
         var dtg = (now - state.gt) / 1000;
@@ -2971,18 +3189,34 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         state.gvx += (vx - state.gvx) * k;
         state.gvy += (vy - state.gvy) * k;
         var sp = Math.hypot(state.gvx, state.gvy);
-        var gain = 0.62 * Math.min(1, 3.4 / Math.max(sp * 0.62, 1e-4));
+        var push = GUST_TOP * (1 - Math.exp(-sp / GUST_KNEE));
+        var tt = time + state.gseed;
+        var breath = clamp(0.5 + 0.5 * Math.sin(tt * 6.1) * Math.sin(tt * 2.3 + 1.1) + 0.18 * Math.sin(tt * 13.7 + 0.4), 0, 1);
+        var gusty = 1 - Math.min(0.75, sp * GUST_BREATH) * (1 - breath);
         // Under the moon the finger's gust works at half strength: half the
         // grip on the air, and a softer push so flicks tear less.
         var bs = brushScale();
-        gain *= 0.4 + 0.6 * bs;
-        var r = 0.075 * settings.brush;
+        var speed = push * (0.6 + 0.4 * gusty) * (0.4 + 0.6 * bs) * state.gpow;
+        var grip = 0.55 * bs * gusty / (1 + GUST_GRIP_FAST * sp);
+        // The air leaves a little off the line of the drag.
+        var turn = 0.17 * Math.sin(tt * 4.7 + 2.0);
+        var ux = sp > 1e-4 ? state.gvx / sp : 0;
+        var uy = sp > 1e-4 ? state.gvy / sp : 0;
+        var dx = ux * Math.cos(turn) - uy * Math.sin(turn);
+        var dy = ux * Math.sin(turn) + uy * Math.cos(turn);
+        var r = 0.075 * settings.brush * (0.85 + 0.30 * breath);
+        var jit = r * 0.35 * Math.sin(tt * 8.3 + 0.7);
         var gap = Math.hypot(x - state.gx, y - state.gy);
         var steps = Math.min(4, Math.max(1, Math.ceil(gap / (r * 0.8))));
         for (var i = 1; i <= steps; i++) {
           var f = i / steps;
-          addGust(state.gx + (x - state.gx) * f, state.gy + (y - state.gy) * f,
-            state.gvx * gain, state.gvy * gain, r, 0.55 * bs, 0);
+          addGust(state.gx + (x - state.gx) * f - uy * jit, state.gy + (y - state.gy) * f + ux * jit,
+            dx * speed, dy * speed, r, grip, 0, state.glane + jit);
+        }
+        // The dust feels the same air for a moment after the finger has passed.
+        if (now - (state.gpuff || 0) > 45) {
+          addPuff(x, y, dx * speed, dy * speed, r * 1.5, 0);
+          state.gpuff = now;
         }
         state.gx = x; state.gy = y; state.gt = now;
       }
@@ -3004,7 +3238,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         for (var i = 0; i < n; i++) {
           var g = gusts[i];
           gustA[i * 4] = g[0]; gustA[i * 4 + 1] = g[1]; gustA[i * 4 + 2] = g[2]; gustA[i * 4 + 3] = g[3];
-          gustB[i * 4] = g[4]; gustB[i * 4 + 1] = g[5]; gustB[i * 4 + 2] = g[6];
+          gustB[i * 4] = g[4]; gustB[i * 4 + 1] = g[5]; gustB[i * 4 + 2] = g[6]; gustB[i * 4 + 3] = g[7];
         }
         gusts.length = 0;
         var relax = settings.trail >= 7.95 ? 1e5 : (1.5 + settings.trail * 3.2) * healScale();
@@ -3045,6 +3279,15 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         gl.bindTexture(gl.TEXTURE_2D, flow.m[a].tex);
         gl.uniform1i(u.uMap, 1);
         gl.uniform1f(u.uRelax, relax);
+        gl.uniform4f(u.uMoonZone, pointer.x, pointer.y, MOON_CLEAR_REACH,
+          sky && moonMode ? (MOON_CLEAR_HOLD - 1) * moonAmount : 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+        u = common(flow.view);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, flow.sky.fb);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, flow.m[b].tex);
+        gl.uniform1i(u.uMap, 0);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
 
         flow.cur = b;
@@ -3130,6 +3373,10 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       // as far, and the puff it blows through the cloud is as much wider.
       function bloom(x, y, atMoon) {
         var reach = atMoon ? MOON_SHOCK_REACH : 1;
+        if (atMoon) {
+          moonBreathLife = Math.max(MOON_BREATH_LIFE, moonBreath > 0.3 ? moonBreathLife : 0);
+          moonBreath = 1;
+        }
         var base = Math.random() * Math.PI * 2;
         for (var i = 0; i < 3; i++) {
           var a = base + i * (Math.PI * 2 / 3) + (Math.random() - 0.5) * 0.5;
@@ -3147,7 +3394,8 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           );
         }
         addMark(x, y, 0.145, 26, 0.95, 0.18);
-        if (sky && flowOK) addGust(x, y, 0, 0, 0.11 * settings.brush * reach, 0.9 * brushScale(), 1.5);
+        if (sky && flowOK) addGust(x, y, 0, 0, 0.11 * settings.brush * reach, 0.9 * brushScale(), 1.5, Math.random() * 4);
+        addPuff(x, y, 0, 0, 0.14 * settings.brush * reach, 0.9);
         addShock(x, y, 0.95, reach);
         burstParticles(x, y, 26, 1.0);
         impulseParticles(x, y, 0.55 * reach, 0.6);
@@ -3241,6 +3489,8 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           var c = particles[(Math.random() * activeParticles) | 0];
           if (c.flash + c.energy < best.flash + best.energy) best = c;
         }
+        // Out-of-focus motes stay where they are: a burst is close at hand.
+        for (var tries = 0; best.blur > 0 && tries < 6; tries++) best = particles[(Math.random() * activeParticles) | 0];
         best.fade = 0;
         return best;
       }
@@ -3440,6 +3690,120 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       }
 
 
+      // --- A rare flyer -----------------------------------------------------
+      // Now and then a bat flits across the sky under the cloud, sometimes two
+      // together, or an owl glides over: the first after a minute or so of
+      // scene time, then one every few minutes, and only under the sky. Half
+      // of them pass close by the moon. Key F sends one over at once.
+      var FLY_FIRST = [45, 100];    // scene seconds before the first one
+      var FLY_EVERY = [110, 260];   // and between later ones
+      var flyers = [];
+      var nextFlyAt = time + FLY_FIRST[0] + Math.random() * (FLY_FIRST[1] - FLY_FIRST[0]);
+      var flyData = new Float32Array(8);
+      var flyDataB = new Float32Array(8);
+
+      function launchFlyers(kind) {
+        var bat = (kind || (Math.random() < 0.65 ? 'bat' : 'owl')) === 'bat';
+        var cw = Math.max(1, canvas.width);
+        var ch = Math.max(1, canvas.height);
+        var ex = cw / Math.min(cw, ch);
+        var ey = ch / Math.min(cw, ch);
+        var span = bat ? 0.085 + Math.random() * 0.035 : 0.17 + Math.random() * 0.06;
+        // In beyond one edge, out beyond the other, through a point in view.
+        var margin = span * 0.8 + 0.05;
+        var flip = Math.random() < 0.5 ? -1 : 1;
+        var p0, p2;
+        if (Math.random() < 0.72) {
+          p0 = { x: -flip * (ex + margin), y: (Math.random() * 1.4 - 0.7) * ey };
+          p2 = { x: flip * (ex + margin), y: (Math.random() * 1.4 - 0.7) * ey };
+        } else {
+          p0 = { x: (Math.random() * 1.4 - 0.7) * ex, y: -flip * (ey + margin) };
+          p2 = { x: (Math.random() * 1.4 - 0.7) * ex, y: flip * (ey + margin) };
+        }
+        var mid = moonMode && Math.random() < 0.5
+          ? { x: pointer.x + (Math.random() - 0.5) * 0.30, y: pointer.y + (Math.random() - 0.5) * 0.30 }
+          : { x: (Math.random() * 1.2 - 0.6) * ex, y: (Math.random() * 1.2 - 0.6) * ey };
+        // A quadratic curve that passes through mid halfway along.
+        var c = { x: 2 * mid.x - 0.5 * (p0.x + p2.x), y: 2 * mid.y - 0.5 * (p0.y + p2.y) };
+        var speed = bat ? 0.60 + Math.random() * 0.30 : 0.42 + Math.random() * 0.14;
+        var dur = (Math.hypot(c.x - p0.x, c.y - p0.y) + Math.hypot(p2.x - c.x, p2.y - c.y)) * 0.9 / speed;
+        var count = bat && Math.random() < 0.3 ? 2 : 1;
+        flyers.length = 0;
+        for (var i = 0; i < count; i++) {
+          flyers.push({
+            bat: bat, p0: p0, c: c, p2: p2, dur: dur,
+            t0: time + i * (0.25 + Math.random() * 0.35),
+            span: span * (i ? 0.85 + Math.random() * 0.2 : 1),
+            off: i ? (Math.random() < 0.5 ? -1 : 1) * (0.05 + Math.random() * 0.06) : 0,
+            seed: Math.random() * 50,
+            phase: Math.random() * Math.PI * 2,
+            env: 1, gliding: false, glideT: 0.8 + Math.random() * 0.6
+          });
+        }
+      }
+
+      function flyerAt(f, age) {
+        var u = clamp(age / f.dur, 0, 1);
+        // A bat darts: its speed comes and goes, and it jinks from side to side.
+        if (f.bat) u = clamp(u + 0.013 * Math.sin(age * 8.2 + f.seed), 0, 1);
+        var a = 1 - u;
+        var x = a * a * f.p0.x + 2 * a * u * f.c.x + u * u * f.p2.x;
+        var y = a * a * f.p0.y + 2 * a * u * f.c.y + u * u * f.p2.y;
+        var tx = 2 * a * (f.c.x - f.p0.x) + 2 * u * (f.p2.x - f.c.x);
+        var ty = 2 * a * (f.c.y - f.p0.y) + 2 * u * (f.p2.y - f.c.y);
+        var tl = Math.hypot(tx, ty) || 1;
+        var side = f.off + (f.bat
+          ? 0.034 * Math.sin(age * 6.9 + f.seed) + 0.012 * Math.sin(age * 17.0 + f.seed * 2.3)
+          : 0.012 * Math.sin(age * 1.3 + f.seed));
+        return { x: x - ty / tl * side, y: y + tx / tl * side };
+      }
+
+      function updateFlyers(dt) {
+        if (!flyers.length && time > nextFlyAt) {
+          if (sky && skyAmount > 0.95 && !reduceMotion && !stillMode) launchFlyers();
+          nextFlyAt = time + FLY_EVERY[0] + Math.random() * (FLY_EVERY[1] - FLY_EVERY[0]);
+        }
+        flyData.fill(0);
+        flyDataB.fill(0);
+        var slot = 0;
+        for (var i = flyers.length - 1; i >= 0; i--) {
+          var f = flyers[i];
+          var age = time - f.t0;
+          if (age >= f.dur) { flyers.splice(i, 1); continue; }
+          if (age < 0 || slot > 1) continue;
+          var pos = flyerAt(f, age);
+          var prev = flyerAt(f, Math.max(0, age - 0.05));
+          var stroke;
+          if (f.bat) {
+            f.phase += dt * Math.PI * 2 * (7.0 + 1.2 * Math.sin(age * 2.1 + f.seed));
+            stroke = Math.sin(f.phase);
+          } else {
+            // An owl beats a few times, then glides on spread wings.
+            f.glideT -= dt;
+            if (f.glideT <= 0) {
+              f.gliding = !f.gliding;
+              f.glideT = f.gliding ? 0.8 + Math.random() * 0.8 : 0.9 + Math.random() * 0.6;
+            }
+            f.env += ((f.gliding ? 0 : 1) - f.env) * Math.min(1, dt * 5);
+            f.phase += dt * Math.PI * 2 * 2.4;
+            stroke = Math.sin(f.phase) * f.env + 0.8 * (1 - f.env);
+          }
+          var u = age / f.dur;
+          // The body turns after its line of flight, a beat behind it.
+          var head = Math.atan2(pos.y - prev.y, pos.x - prev.x);
+          if (f.heading === undefined || age < 0.1) f.heading = head;
+          f.heading += Math.atan2(Math.sin(head - f.heading), Math.cos(head - f.heading)) * Math.min(1, dt * 9);
+          flyData[slot * 4] = pos.x;
+          flyData[slot * 4 + 1] = pos.y;
+          flyData[slot * 4 + 2] = f.heading;
+          flyData[slot * 4 + 3] = f.span;
+          flyDataB[slot * 4] = stroke;
+          flyDataB[slot * 4 + 1] = f.bat ? 0 : 1;
+          flyDataB[slot * 4 + 2] = smoothstep(0, 0.03, u) * (1 - smoothstep(0.97, 1, u));
+          slot++;
+        }
+      }
+
       function burstParticles(x, y, count, force) {
         if (!activeParticles) return;
         var aspect = canvas.width / Math.max(1, canvas.height);
@@ -3463,6 +3827,9 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       function initParticles() {
         particles.length = 0;
         for (var i = 0; i < MAX_PARTICLES; i++) {
+          // Under the sky each mote also has a depth: most are far pinpricks,
+          // a few are near enough to be soft, out-of-focus discs.
+          var nearMote = Math.random() < MOTE_NEAR_SHARE;
           particles.push({
             x: Math.random(),
             y: Math.random(),
@@ -3475,8 +3842,50 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
             flash: 0,
             fade: 1,
             bright: 0.08,
-            dark: 0
+            dark: 0,
+            depth: nearMote ? Math.random() * 0.15 : 0.30 + 0.70 * Math.pow(Math.random(), 0.8),
+            blur: nearMote ? 1 : 0,
+            lum: Math.random(),
+            tw: 0.35 + Math.random() * 1.30,
+            flake: Math.random() < 0.35 ? 0.6 + Math.random() * 0.4 : 0,
+            glintRate: 0.025 + Math.random() * 0.060,
+            glintPhase: Math.random(),
+            lit: 0
           });
+        }
+      }
+
+      // --- Night motes (under the sky) -------------------------------------
+      // Dust and pollen hanging in the air between you and the cloud. They
+      // ride the wind: the steady drift (nearer motes cross the view faster),
+      // the brush's gusts for a moment after the finger has passed, the moon's
+      // passage and its held breath. They shimmer as they turn, flakes now and
+      // then catch a glint, and seen near the moon they light up silver.
+      var MOTE_BRIGHT = 0.50;       // brightness of a resting mote
+      var MOTE_MOON = 0.95;         // extra light on motes seen near the moon
+      var MOTE_MOON_REACH = 0.34;   // scene units past the disc over which that falls off
+      var MOTE_GLINT = 0.80;        // brightness of a flake's brief glint
+      var MOTE_WIND = 0.030;        // drift of the farthest motes, units/s; the nearest go ~4x as fast
+      var MOTE_CARRY = 0.60;        // share of a gust's speed the dust picks up
+      var puffs = [];               // the air a gust leaves moving, felt by the dust
+      var MAX_PUFFS = 40;
+      var PUFF_LIFE = 2.2;
+
+      function addPuff(x, y, vx, vy, r, radial) {
+        if (puffs.length >= MAX_PUFFS) puffs.shift();
+        puffs.push({ x: x, y: y, vx: vx, vy: vy, r: r, rNow: r, radial: radial || 0, born: time, w: 1 });
+      }
+
+      function updatePuffs(dt) {
+        for (var i = puffs.length - 1; i >= 0; i--) {
+          var pf = puffs[i];
+          var age = time - pf.born;
+          if (age > PUFF_LIFE) { puffs.splice(i, 1); continue; }
+          pf.w = Math.exp(-age / 0.6);
+          // The air carries on a little way, spreading as it slows.
+          pf.x += pf.vx * 0.35 * pf.w * dt;
+          pf.y += pf.vy * 0.35 * pf.w * dt;
+          pf.rNow = pf.r * (1.0 + age * 0.8);
         }
       }
 
@@ -3533,17 +3942,49 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         var stirReach = stirR * stirR * 6.25;
         var orbitR = 0.07 + 0.05 * settings.brush;
         buildStirrers(dt);
+        updatePuffs(dt);
+        var skyOn = skyAmount > 0.001;
+        // The steady wind comes and goes in long, slow breaths.
+        var windBreath = 0.55 + 0.45 * Math.sin(time * 0.13) * Math.sin(time * 0.051 + 1.3) + 0.25;
+        var moonLight = moonMode && skyOn ? moonAmount : 0;
         for (var i = 0; i < activeParticles; i++) {
           var p = particles[i];
           var px = (p.x - 0.5) * 2.0 * aspect;
           var py = (p.y - 0.5) * 2.0;
           var extraDrag = 0;
+          var near = 1 - p.depth;
 
-          // Slow ambient drift.
+          // Slow ambient drift; under the sky it is stronger for nearer motes.
+          var amb = 0.03 * (1 + skyAmount * (0.6 + 1.8 * near));
           var ax = (Math.sin(p.y * 5.3 + time * 0.12 + p.phase)
-                 + Math.cos((p.x + p.y) * 3.7 - time * 0.08) * 0.5) * 0.03;
+                 + Math.cos((p.x + p.y) * 3.7 - time * 0.08) * 0.5) * amb;
           var ay = (Math.cos(p.x * 4.9 - time * 0.10 + p.phase)
-                 + Math.sin((p.x - p.y) * 4.1 + time * 0.07) * 0.5) * 0.03;
+                 + Math.sin((p.x - p.y) * 4.1 + time * 0.07) * 0.5) * amb;
+
+          if (skyOn) {
+            // The wind the clouds drift on carries the dust too.
+            ax += MOTE_WIND * (0.8 + 3.2 * near * near) * windBreath * DUST_DRAG * skyAmount;
+            // The air a gust left moving: the dust is swept along it, and a
+            // puff with no direction blows the dust outward.
+            for (var u = 0; u < puffs.length; u++) {
+              var pf = puffs[u];
+              var fdx = px - pf.x;
+              var fdy = py - pf.y;
+              var fd2 = fdx * fdx + fdy * fdy;
+              var fr2 = pf.rNow * pf.rNow;
+              if (fd2 > fr2 * 6.0) continue;
+              var fw = Math.exp(-fd2 / fr2) * pf.w * skyAmount;
+              var fgrip = Math.min(1, fw * 6.0 * dt);
+              p.vx += (pf.vx * MOTE_CARRY * vscale - p.vx) * fgrip;
+              p.vy += (pf.vy * MOTE_CARRY * vscale - p.vy) * fgrip;
+              if (pf.radial > 0) {
+                var fdl = Math.sqrt(fd2) + 1e-4;
+                ax += fdx / fdl * pf.radial * fw * 1.4 * vscale;
+                ay += fdy / fdl * pf.radial * fw * 1.4 * vscale;
+              }
+              p.flash = Math.max(p.flash, fw * 0.25);
+            }
+          }
 
           // Ripples: the ring lights dust as it passes and gives it a brief
           // nudge. The ring outruns the dust, so dust never rides the front.
@@ -3631,8 +4072,9 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
 
           p.vx += ax * vscale * dt;
           p.vy += ay * vscale * dt;
-          // On the ride the dust falls behind with the trees.
-          p.vy -= 0.12 * rideAmount * settings.pace * dt;
+          // On the ride the dust falls behind with the trees; under the sky,
+          // nearer motes fall behind faster.
+          p.vy -= 0.12 * rideAmount * settings.pace * (1 + skyAmount * (1.6 * near - 0.45)) * dt;
 
           var speed = Math.hypot(p.vx, p.vy);
           var damp = Math.exp(-(DUST_DRAG + DUST_DRAG_FAST * speed + extraDrag) * dt);
@@ -3650,43 +4092,93 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           p.energy *= Math.pow(0.55, dt * 60);
           p.flash *= Math.pow(0.88, dt * 60);
           p.fade = Math.min(1, p.fade + dt * 4.0);
-          p.bright = (p.base + Math.min(0.22, speed * 0.20) + p.energy * 0.25 + p.flash * 0.55) * p.fade * (stillMode ? 0.35 : 1.0);
 
           var psx = (p.x - 0.5) * 2.0 * aspect;
           var psy = (p.y - 0.5) * 2.0;
-          var dark = 0;
-          for (var mi = 0; mi < marks.length; mi++) {
-            var mm = marks[mi];
-            var mr = Math.max(0.045, mm.rNow * 2.3);
-            var md = Math.hypot(psx - mm.x, psy - mm.y);
-            var mq = md / mr;
-            dark += mm.opacity * Math.exp(-mq * mq * 1.5);
+          var moteGlow = p.base + Math.min(0.22, speed * 0.20);
+          p.lit = 0;
+          if (skyOn) {
+            // Moonlight scatters off dust seen near the moon.
+            if (moonLight > 0) {
+              var mdist = Math.hypot(psx - pointer.x, psy - pointer.y);
+              p.lit = moonLight * Math.exp(-Math.max(0, mdist - MOON_R) / MOTE_MOON_REACH);
+            }
+            var twinkle = 0.70 + 0.30 * Math.sin(time * p.tw + p.phase);
+            // A flake catches the light for a moment as it turns; near the
+            // moon it turns into the light more often.
+            var glint = 0;
+            if (p.flake > 0) {
+              var gc = (time * p.glintRate * (1 + 2.0 * p.lit) + p.glintPhase) % 1;
+              var gd = (gc - 0.5) / 0.011;
+              if (gd * gd < 9) glint = Math.exp(-gd * gd) * p.flake;
+            }
+            var skyGlow = MOTE_BRIGHT * (0.30 + 0.70 * p.lum) * twinkle
+                        + glint * MOTE_GLINT * (0.6 + 1.4 * p.lit)
+                        + p.lit * MOTE_MOON * (0.35 + 0.65 * p.lum)
+                        + Math.min(0.45, speed * 0.55);
+            moteGlow += (skyGlow - moteGlow) * skyAmount;
           }
-          p.dark = Math.min(1, dark * 2.1);
+          var lightUp = moteGlow + p.energy * 0.25 + p.flash * 0.55;
+          // A near mote spreads all its light over a wide, soft disc.
+          if (p.blur > 0) lightUp *= 1 - 0.955 * skyAmount;
+          p.bright = lightUp * p.fade * (stillMode ? 0.35 : 1.0);
+
+          // In the void, dust inside a dark stroke is hidden. Under the sky a
+          // stroke is wind, and the dust in it is what shows the wind.
+          var dark = 0;
+          if (skyAmount < 0.999) {
+            for (var mi = 0; mi < marks.length; mi++) {
+              var mm = marks[mi];
+              var mr = Math.max(0.045, mm.rNow * 2.3);
+              var md = Math.hypot(psx - mm.x, psy - mm.y);
+              var mq = md / mr;
+              dark += mm.opacity * Math.exp(-mq * mq * 1.5);
+            }
+          }
+          p.dark = Math.min(1, dark * 2.1) * (1 - skyAmount);
         }
       }
 
       function uploadParticles() {
         if (!particleProgram) return;
-        var toU = 0.5 / (canvas.width / Math.max(1, canvas.height));
+        var cw = Math.max(1, canvas.width);
+        var ch = Math.max(1, canvas.height);
+        var toU = 0.5 / (cw / ch);
+        // Sky mote sizes are fractions of the short side of the view; the
+        // point shader measures sizes against its height.
+        var toH = Math.min(cw, ch) / ch;
+        // A mote smaller than this many pixels would light no pixel fully, so
+        // it is drawn at least this wide and its brightness says how big it is.
+        var minSize = 2.6 / ch;
+        var F = PARTICLE_FLOATS;
         for (var i = 0; i < activeParticles; i++) {
           var p = particles[i];
-          var base = i * 12;
+          var base = i * 3 * F;
           var ux = p.vx * toU;
           var uy = p.vy * 0.5;
           var lag = 0.030 + Math.min(0.070, Math.hypot(p.vx, p.vy) * 0.06);
           var lightOut = 1.0 - p.dark * 0.93;
+          var near = 1 - p.depth;
+          var skySize = p.blur > 0
+            ? (0.045 + 0.035 * p.lum) * toH
+            : Math.max(minSize, (0.0015 + 0.0020 * p.lum + 0.0034 * near * near) * (1 + 0.6 * p.lit) * toH);
+          var size = p.size + (skySize - p.size) * skyAmount;
+          var blur = p.blur * skyAmount;
+          var silver = Math.min(1, 0.22 * skyAmount + p.lit * 0.85);
           for (var k = 0; k < 3; k++) {
-            var at = base + k * 4;
+            var at = base + k * F;
             var back = lag * k;
             particleData[at] = p.x - ux * back;
             particleData[at + 1] = p.y - uy * back;
-            particleData[at + 2] = p.size * (1.0 - k * 0.24);
-            particleData[at + 3] = p.bright * (1.0 - k * 0.30) * lightOut;
+            particleData[at + 2] = size * (1.0 - k * 0.24);
+            // An out-of-focus mote draws no streak behind it.
+            particleData[at + 3] = p.bright * (1.0 - k * 0.30) * lightOut * (k > 0 ? 1 - blur : 1);
+            particleData[at + 4] = blur;
+            particleData[at + 5] = silver;
           }
         }
         gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
-        gl.bufferSubData(gl.ARRAY_BUFFER, 0, particleData);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, particleData, 0, activeParticles * 3 * F);
       }
 
       function drawParticles() {
@@ -3702,8 +4194,8 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         particlePalette[13] = inkLinear[7];
         particlePalette[14] = inkLinear[8];
         gl.uniform3fv(particleUniforms.pal, particlePalette);
-        // Under the open sky the dust is a few faint motes, not the subject.
-        gl.uniform1f(particleUniforms.dim, 1 - 0.6 * skyAmount);
+        // Mote brightness under the sky is worked out per mote (MOTE_*).
+        gl.uniform1f(particleUniforms.dim, 1);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
         gl.drawArrays(gl.POINTS, 0, activeParticles * 3);
@@ -3942,9 +4434,11 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           pointerVel.y += (clamp(vy, -2, 2) - pointerVel.y) * Math.min(1, dt * 7);
         }
 
-        // The moon is slow to move but quick to answer: its glow flares the
-        // moment a finger lands.
         press += (pressTarget - press) * Math.min(1, dt * (moonMode ? 16 : 7));
+        // The moon is slow to move but quick to answer: its glow flares the
+        // moment a finger lands on it, and only then. A touch anywhere else
+        // leaves it be.
+        moonPress += ((moonGrab ? 1 : 0) - moonPress) * Math.min(1, dt * 16);
       }
 
       // The moon only moves while a finger that landed on it holds it. It is
@@ -4025,6 +4519,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         }
 
         updateOrb(dt);
+        moonBreath *= Math.exp(-dt / moonBreathLife);
         moonAmount += ((moonMode ? 1 : 0) - moonAmount) * Math.min(1, dt * 2.2);
         if (Math.abs(moonAmount - (moonMode ? 1 : 0)) < 0.001) moonAmount = moonMode ? 1 : 0;
         moonGusts();
@@ -4047,6 +4542,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         fadeMask(dt);
         updateMarks(dt);
         updateShocks();
+        updateFlyers(dt);
         updateLights(dt);
         updateAttractors();
         updateAudio(dt);
@@ -4066,7 +4562,8 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         gl.uniform1f(uniforms.time, time);
         gl.uniform2f(uniforms.pointer, pointer.x, pointer.y);
         gl.uniform2f(uniforms.pointerVel, pointerVel.x, pointerVel.y);
-        gl.uniform1f(uniforms.press, press);
+        // uPress lights the pearl for any touch, but the moon only for its own.
+        gl.uniform1f(uniforms.press, press + (moonPress - press) * moonAmount);
         gl.uniform1f(uniforms.veil, settings.veil);
         gl.uniform1f(uniforms.erode, erodeForTrail());
         gl.uniform1f(uniforms.ride, rideAmount);
@@ -4076,9 +4573,11 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         gl.uniform1f(uniforms.drift, drift);
         gl.uniform1f(uniforms.flowOn, flowOK ? 1 : 0);
         gl.uniform1f(uniforms.moonOn, moonAmount);
+        gl.uniform4fv(uniforms.fly, flyData);
+        gl.uniform4fv(uniforms.flyB, flyDataB);
         if (flowOK) {
           gl.activeTexture(gl.TEXTURE1);
-          gl.bindTexture(gl.TEXTURE_2D, flow.m[flow.cur].tex);
+          gl.bindTexture(gl.TEXTURE_2D, flow.sky.tex);
           gl.uniform1i(uniforms.flow, 1);
           gl.activeTexture(gl.TEXTURE2);
           gl.bindTexture(gl.TEXTURE_2D, flow.v[flow.cur].tex);
@@ -4180,6 +4679,8 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           state.moonOffX = pointer.x - pos.x;
           state.moonOffY = pointer.y - pos.y;
           moonGrab = state;
+          state.moonSince = time;
+          moonLane = Math.random() * 4;
           document.body.classList.add('holding-moon');
         }
         active.set(e.pointerId, state);
@@ -4270,6 +4771,14 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         active.delete(e.pointerId);
         if (moonGrab === state) {
           moonGrab = null;
+          // After a real hold or drag the moon keeps its clearing for a while,
+          // the longer it was held the longer. A quick tap does so through
+          // its bloom instead, which a double-tap (a brush flip) cancels.
+          var held = time - state.moonSince;
+          if (state.moved || held > 0.25) {
+            moonBreathLife = MOON_BREATH_LIFE * (1 + 0.5 * Math.min(1, held / 3));
+            moonBreath = Math.max(moonBreath, moonPress);
+          }
           document.body.classList.remove('holding-moon');
         }
 
@@ -4391,6 +4900,10 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         } else if (e.key === 'b' || e.key === 'B') {
           setCursor(!moonMode);
           e.preventDefault();
+        } else if (e.key === 'f' || e.key === 'F') {
+          // Send a flyer over now (only under the sky): mostly for testing.
+          if (sky) launchFlyers(e.shiftKey ? 'owl' : 'bat');
+          e.preventDefault();
         }
       });
 
@@ -4428,9 +4941,11 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       }
       reflectSound();
 
-      var savedRide = false;
-      try { savedRide = localStorage.getItem('opal.void.ride') === 'on'; } catch (e) { /* private */ }
+      // The ride is on by default; turning it off sticks.
+      var savedRide = true;
+      try { savedRide = localStorage.getItem('opal.void.ride') !== 'off'; } catch (e) { /* private */ }
       setRide(savedRide, true);
+      rideAmount = ride ? 1 : 0;
       var savedPines = 'fine';
       try { savedPines = localStorage.getItem('opal.void.pines') || 'fine'; } catch (e) { /* private */ }
       setPines(savedPines !== 'classic', true);
