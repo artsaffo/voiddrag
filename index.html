@@ -518,6 +518,153 @@
       }
       .hint { bottom: max(84px, env(safe-area-inset-bottom)); }
     }
+    /* The lab (L or ?lab): every parameter, live, with where it lives in the code. */
+    .lab {
+      --mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+      --lab-hit: rgba(230, 196, 138, 0.24);
+      --lab-dot: #e6c48a;
+      position: fixed;
+      z-index: 6;
+      left: max(12px, env(safe-area-inset-left));
+      top: max(12px, env(safe-area-inset-top));
+      bottom: max(12px, env(safe-area-inset-bottom));
+      width: min(400px, calc(100vw - 24px));
+      display: flex;
+      flex-direction: column;
+      border: 1px solid rgba(236, 229, 217, 0.16);
+      border-radius: 14px;
+      background: rgba(8, 8, 10, 0.88);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      color: var(--ink-soft);
+      font-size: 11px;
+      line-height: 1.5;
+      -webkit-user-select: text;
+      user-select: text;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateX(-8px);
+      transition: opacity 0.22s var(--ease), transform 0.22s var(--ease), visibility 0.22s;
+    }
+    body.labbing .lab { opacity: 1; visibility: visible; transform: none; }
+    .lab-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 10px 6px 14px;
+      color: var(--ink);
+      letter-spacing: 0.08em;
+    }
+    .lab-title { flex: 1; }
+    .lab-period { color: var(--ink-dim); font-size: 10px; display: flex; align-items: center; gap: 6px; }
+    .lab-period select, .lab-search, .lab-num, .lab-out {
+      font: inherit;
+      color: var(--ink);
+      background: rgba(236, 229, 217, 0.04);
+      border: 1px solid rgba(236, 229, 217, 0.16);
+      border-radius: 7px;
+    }
+    .lab-period select { font-size: 10px; padding: 2px 4px; }
+    .lab-period option { background: #111; }
+    .lab-search { margin: 0 12px 8px; padding: 6px 9px; font-size: 11px; }
+    .lab-search::placeholder { color: rgba(236, 229, 217, 0.32); }
+    .lab-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 10px; }
+    .lab-intro { margin: 2px 2px 8px; color: var(--ink-dim); font-size: 10px; }
+    .lab-group > summary {
+      padding: 10px 2px 4px;
+      color: var(--ink);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .lab-gnote { margin: 0 2px 8px; color: var(--ink-dim); font-size: 10px; }
+    .lab-card {
+      margin: 0 0 8px;
+      padding: 9px 10px 8px;
+      border: 1px solid rgba(236, 229, 217, 0.10);
+      border-radius: 10px;
+      background: rgba(236, 229, 217, 0.025);
+    }
+    .lab-card.changed { border-color: rgba(230, 196, 138, 0.42); }
+    .lab-card.sweeping { border-color: rgba(236, 229, 217, 0.5); }
+    .lab-top { display: flex; align-items: baseline; gap: 8px; }
+    .lab-name { flex: 1; min-width: 0; font-family: var(--mono); font-size: 11px; color: var(--ink); overflow-wrap: anywhere; }
+    .lab-tag { font-size: 9px; letter-spacing: 0.08em; color: var(--ink-dim); }
+    .lab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--lab-dot); visibility: hidden; align-self: center; }
+    .lab-card.changed .lab-dot { visibility: visible; }
+    .lab-val { font-family: var(--mono); color: var(--ink); }
+    .lab-ctl { display: grid; grid-template-columns: minmax(0, 1fr) 68px; gap: 8px; align-items: center; margin-top: 5px; }
+    .lab-ctl input[type="range"] { width: 100%; height: 18px; margin: 0; accent-color: rgba(236, 229, 217, 0.72); cursor: pointer; }
+    .lab-ctl input[type="color"] { width: 44px; height: 22px; padding: 0; border: 1px solid rgba(236, 229, 217, 0.2); border-radius: 6px; background: transparent; }
+    .lab-num { width: 100%; padding: 2px 5px; font-family: var(--mono); font-size: 10px; }
+    .lab-btns { display: flex; gap: 5px; margin-top: 6px; }
+    .lab-btns button {
+      flex: 1;
+      min-height: 22px;
+      border: 1px solid rgba(236, 229, 217, 0.14);
+      border-radius: 999px;
+      color: var(--ink-dim);
+      font-size: 9px;
+      letter-spacing: 0.06em;
+      transition: background 0.2s var(--ease), color 0.2s var(--ease);
+    }
+    .lab-btns button:hover, .lab-btns button.on { background: rgba(236, 229, 217, 0.09); color: var(--ink); }
+    .lab-btns button.on { border-color: rgba(236, 229, 217, 0.5); }
+    .lab-what { margin: 6px 0 0; color: var(--ink-soft); }
+    .lab-warn { margin: 5px 0 0; color: var(--lab-dot); font-size: 10px; }
+    .lab-more > summary { margin-top: 5px; color: var(--ink-dim); font-size: 10px; cursor: pointer; }
+    .lab-more > summary:hover { color: var(--ink); }
+    .lab-k { display: block; margin: 8px 0 2px; color: var(--ink-dim); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; }
+    .lab-p { margin: 0; }
+    .lab-code {
+      display: block;
+      margin: 3px 0 0;
+      padding: 4px 7px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.32);
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: var(--ink-soft);
+    }
+    .lab-loc { display: block; color: var(--ink-dim); font-size: 9px; letter-spacing: 0.03em; }
+    .lab-loc b { color: var(--ink-soft); font-weight: 600; }
+    .lab-use { cursor: pointer; }
+    .lab-use:hover { background: rgba(236, 229, 217, 0.06); }
+    .lab-use.plumb { opacity: 0.55; }
+    .lab-ctx { color: rgba(236, 229, 217, 0.4); }
+    .lab-ctx.at { color: var(--ink); }
+    mark.lab-hit { background: var(--lab-hit); color: var(--ink); border-radius: 3px; padding: 0 1px; }
+    .lab-foot { display: flex; gap: 7px; padding: 8px 12px 12px; border-top: 1px solid rgba(236, 229, 217, 0.08); }
+    .lab-foot button {
+      flex: 1;
+      min-height: 28px;
+      border: 1px solid rgba(236, 229, 217, 0.16);
+      border-radius: 999px;
+      color: var(--ink-soft);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+    }
+    .lab-foot button:hover { background: rgba(236, 229, 217, 0.08); color: var(--ink); }
+    .lab-out { margin: 0 12px 12px; height: 110px; padding: 6px 8px; font-family: var(--mono); font-size: 10px; resize: vertical; }
+    .lab-card[hidden], .lab-group[hidden] { display: none; }
+    @media (max-width: 600px) and (min-height: 560px) {
+      .lab {
+        top: auto;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: auto;
+        height: 58vh;
+        border-radius: 14px 14px 0 0;
+        transform: translateY(10px);
+      }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation-duration: 0.001ms !important;
@@ -572,7 +719,24 @@
     <div class="panel-actions"><button id="pines" type="button" aria-pressed="true" title="pine style: fine needles or the classic silhouette (P)">pines &middot; fine</button><button id="cursor" type="button" aria-pressed="true" title="cursor: the slow moon in the sky, or the classic pearl (B)">cursor &middot; moon</button></div>
     <div class="panel-actions"><button id="still"type="button" title="clear the field">still</button><button id="write" type="button" title="smaller brush, longer trail">write</button><button id="reset" type="button">reset</button></div>
     <p class="panel-hint">left &middot; part &nbsp; right &middot; light</p>
-    <p class="panel-note">T tune &middot; C still &middot; M mood &middot; S sound &middot; R ride &middot; P pines &middot; K sky &middot; B cursor</p>
+    <p class="panel-note">T tune &middot; C still &middot; M mood &middot; S sound &middot; R ride &middot; P pines &middot; K sky &middot; B cursor &middot; L lab</p>
+  </section>
+
+  <section class="lab" id="lab" aria-hidden="true" aria-label="parameter lab">
+    <div class="lab-head">
+      <span class="lab-title">lab</span>
+      <label class="lab-period" title="How long one sweep takes, min to max and back.">sweep
+        <select id="labPeriod"><option value="3">3 s</option><option value="6" selected>6 s</option><option value="12">12 s</option><option value="24">24 s</option></select>
+      </label>
+      <button class="panel-close" id="labClose" type="button" aria-label="close the lab">&times;</button>
+    </div>
+    <input class="lab-search" id="labSearch" type="search" placeholder="filter: name, function, idea" aria-label="filter parameters">
+    <div class="lab-body" id="labBody"></div>
+    <div class="lab-foot">
+      <button id="labReset" type="button" title="Put every constant back to its value in the file (tune values have their own reset).">reset constants</button>
+      <button id="labCopy" type="button" title="Copy the changed values as code you can paste into VoidDrag.html.">copy changes</button>
+    </div>
+    <textarea class="lab-out" id="labOut" readonly aria-label="changed values" hidden></textarea>
   </section>
 
   <div class="fallback" id="fallback" role="alert">
@@ -985,24 +1149,24 @@ float darkDust(vec2 p, float t, float scale, float size, float seed) {
 // One pine as seen flat on your back: the tip is the part nearest the zenith
 // and the trunk runs straight away from it, so every tree leans in toward the
 // middle of the sky. Tiers flare and tuck back; the edge is bristled.
-float pine(vec2 p, vec2 tip, float h, float size, float squash, out float fringe) {
+float pine(vec2 p, vec2 tip, float h, float hv, float size, float squash, vec2 rock, out float fringe) {
   fringe = 0.0;
   vec2 d = normalize(tip);
   vec2 r = p - tip;
   float s = dot(r, d);
   if (s < -0.012) return 0.0;
-  float w = abs(dot(r, vec2(-d.y, d.x))) / squash;
+  float w = abs(dot(r, vec2(-d.y, d.x)) - rock.x * exp(-max(s, 0.0) * 1.4 / size)) / squash;
   float body = size * (0.150 * (1.0 - exp(-s * 5.0 / size)) + 0.045 * s);
   if (w > body + 0.035) return 0.0;
   float tier = 0.052 * size * (0.8 + 0.4 * h);
   float flare = fract(s / tier + h * 7.0);
   float hw = body * (0.40 + 0.60 * flare);
   float grown = smoothstep(0.0, 0.07, s);
-  float bristle = abs(fract(s * 44.0 / size + w * 26.0 + h * 3.0) - 0.5) * 2.0;
+  float bristle = abs(fract(s * 44.0 / size + w * 26.0 + hv * 3.0) - 0.5) * 2.0;
   hw += (bristle - 0.5) * 0.018 * size * grown;
-  hw += (vnoise(vec2(s, w) * 36.0 + h * 91.0) - 0.5) * 0.022 * size * grown;
+  hw += (vnoise(vec2(s, w) * 36.0 + hv * 91.0) - 0.5) * 0.022 * size * grown;
   hw = max(hw, 0.0035);
-  float aa = 1.5 / (min(uRes.x, uRes.y) * squash);
+  float aa = 1.5 / (min(uRes.x, uRes.y) * sqrt(squash));
   float m = smoothstep(aa, -aa, w - hw) * smoothstep(-0.012, 0.0, s);
   fringe = m * (1.0 - smoothstep(0.0, 0.020 * size, hw - w));
   return m;
@@ -1012,6 +1176,10 @@ float pine(vec2 p, vec2 tip, float h, float size, float squash, out float fringe
 // direction. Sampled per pixel in scrolled world space, so a gust travels
 // through a tree branch by branch instead of bending all of it at once.
 const vec2 PINE_WIND = vec2(0.857, 0.514);
+
+// Planes crossed around each trunk in the ride. Each costs about one more
+// tree per pixel inside the outline.
+const int PINE_PLANES = 4;
 
 float pineGust(vec2 wp, float t) {
   float a = dot(wp, PINE_WIND);
@@ -1024,7 +1192,19 @@ float pineGust(vec2 wp, float t) {
 
 float tierSway(float id, float h, float t) {
   float r = hash21(vec2(id, h * 53.0 + 1.3));
-  return sin(t * (1.9 + 1.3 * r) + r * TAU);
+  // Slow: a branch dips and lifts over a few seconds, never shivers.
+  return sin(t * (0.55 + 0.35 * r) + r * TAU);
+}
+
+// The whole tree rocks slowly back and forth across its trunk: a long swing
+// with a slower one beneath it, so no two passes look alike. x is the trunk
+// and crown; y is the same swing a little later, for branch ends that trail.
+vec2 pineRock(float h, float size, float t) {
+  float ph = h * TAU;
+  float amp = size * (0.030 + 0.014 * fract(h * 5.3));
+  float a = 0.72 * sin(t * 0.74 + ph) + 0.28 * sin(t * 0.41 + ph * 1.9 + 1.0);
+  float b = 0.72 * sin(t * 0.74 + ph - 0.75) + 0.28 * sin(t * 0.41 + ph * 1.9 + 0.45);
+  return vec2(a, b) * amp;
 }
 
 // The fine pine: the classic outline grown into branches. Each tier is a whorl
@@ -1032,10 +1212,12 @@ float tierSway(float id, float h, float t) {
 // herringbone tufts and bristle past the outline, and the crown behind is
 // dense with a few holes of sky. Wind bends tips and leaves the trunk be:
 // offsets grow with distance from the axis, and each tier flutters on its own.
-// squash < 1 narrows the tree across its trunk: the second, crossed plane of
-// the same tree, turned most of the way edge-on to you.
-float pineFine(vec2 p, vec2 tip, float h, float size, float t, float gust, vec2 wdir,
-               float squash, out float fringe, out float shade) {
+// A tree is several of these planes crossed around its trunk; squash < 1 is a
+// plane turned partway edge-on to you. h shapes the whole tree (whorl spacing,
+// crown sway), so every plane's tiers ring the trunk at the same heights; hv
+// is this plane's own needles, lumps and flutter.
+float pineFine(vec2 p, vec2 tip, float h, float hv, float size, float t, float gust, vec2 wdir,
+               float squash, vec2 rock, out float fringe, out float shade) {
   fringe = 0.0;
   shade = 0.0;
   vec2 d = normalize(tip);
@@ -1043,8 +1225,10 @@ float pineFine(vec2 p, vec2 tip, float h, float size, float t, float gust, vec2 
   vec2 r = p - tip;
   float s = dot(r, d);
   if (s < -0.03 * size) return 0.0;
-  float x = dot(r, n) / squash;
   float sp = max(s, 0.0);
+  // The rock is widest at the tip and dies away down the trunk.
+  float rockAt = exp(-sp * 1.4 / size);
+  float x = (dot(r, n) - rock.x * rockAt) / squash;
   float body = size * (0.150 * (1.0 - exp(-sp * 5.0 / size)) + 0.045 * sp);
   if (abs(x) > body + 0.05 * size) return 0.0;
 
@@ -1057,9 +1241,9 @@ float pineFine(vec2 p, vec2 tip, float h, float size, float t, float gust, vec2 
   float tf0 = fract(sf);
   // Each tier flutters on its own; neighbours meet halfway at the seam so a
   // branch never jumps.
-  float swA = tierSway(id - 1.0, h, t);
-  float swB = tierSway(id, h, t);
-  float swC = tierSway(id + 1.0, h, t);
+  float swA = tierSway(id - 1.0, hv, t);
+  float swB = tierSway(id, hv, t);
+  float swC = tierSway(id + 1.0, hv, t);
   float sw = mix(swB, 0.5 * (swB + swC), smoothstep(0.80, 1.0, tf0));
   sw = mix(sw, 0.5 * (swA + swB), 1.0 - smoothstep(0.0, 0.20, tf0));
 
@@ -1067,9 +1251,11 @@ float pineFine(vec2 p, vec2 tip, float h, float size, float t, float gust, vec2 
   flex *= flex;
   float crown = exp(-sp * 2.5 / size);
   vec2 wl = vec2(dot(wdir, n), dot(wdir, d));
-  float bend = size * (flex * (gust * 0.026 + (0.0035 + 0.0060 * gust) * sw)
-                     + crown * (gust * 0.014 + 0.004 * sin(t * 0.47 + h * 19.0)));
+  float bend = size * (flex * (gust * 0.026 + (0.0060 + 0.0060 * gust) * sw)
+                     + crown * gust * 0.014);
   x -= wl.x * bend / squash;
+  // Branch ends trail the trunk's swing.
+  x -= (rock.y - rock.x) * rockAt * flex * 0.7 / squash;
   s -= wl.y * bend * 0.6 + sw * flex * 0.0025 * size;
 
   sp = max(s, 0.0);
@@ -1103,8 +1289,8 @@ float pineFine(vec2 p, vec2 tip, float h, float size, float t, float gust, vec2 
     float spacing = (0.012 - 0.0025 * fs) * size;
     float sweep = 0.95 - 0.38 * fs;
     float droop = (1.4 + 1.2 * fs) / size;
-    float q = (ax - abs(across) * sweep - across * across * droop) / spacing + h * 13.0 + fs * 0.37;
-    float nh = hash21(vec2(floor(q), id * 7.0 + h * 31.0 + sign(across) + fs * 17.0));
+    float q = (ax - abs(across) * sweep - across * across * droop) / spacing + hv * 13.0 + fs * 0.37;
+    float nh = hash21(vec2(floor(q), id * 7.0 + hv * 31.0 + sign(across) + fs * 17.0));
     if (nh < 0.18) continue;
     float lenN = nl * slopeFix * (0.50 + 0.40 * nh) * tipShort * (1.0 - 0.18 * fs);
     float onNeedle = 1.0 - smoothstep(lenN * 0.70, lenN, abs(across));
@@ -1123,9 +1309,9 @@ float pineFine(vec2 p, vec2 tip, float h, float size, float t, float gust, vec2 
 
   // The dense crown behind the skirt: a lumpy edge, opened by a few holes of
   // sky toward the branch tips.
-  float clump = vnoise(vec2(ax, s) * (30.0 / size) + h * 91.0 + id * 3.1);
-  float lump = vnoise(vec2(ax * 90.0 / size, id * 5.3 + h * 17.0)) * 0.65
-             + vnoise(vec2(ax * 260.0 / size, id * 2.1 + h * 5.0)) * 0.35;
+  float clump = vnoise(vec2(ax, s) * (30.0 / size) + hv * 91.0 + id * 3.1);
+  float lump = vnoise(vec2(ax * 90.0 / size, id * 5.3 + hv * 17.0)) * 0.65
+             + vnoise(vec2(ax * 260.0 / size, id * 2.1 + hv * 5.0)) * 0.35;
   float holes = smoothstep(0.55, 0.95, ub) * smoothstep(0.58, 0.78, clump);
   float massAt = nl * (0.80 + 0.90 * (lump - 0.5)) * slopeFix;
   // Above the tip the outline has no width and slopeFix is zero, which would
@@ -1243,14 +1429,14 @@ vec4 canopy(vec2 p, float lit) {
     float scroll = uTravel * reach + fl * 3.7;
     float size = 0.80 + 0.28 * fl;
     float c0 = floor((-ext.y - 0.30 + scroll) / spacing);
-    float cover = 0.0;
-    float edge = 0.0;
-    float shade = 0.0;
-    float coverX = 0.0;
-    float edgeX = 0.0;
     float gust = 0.0;
     vec2 wm = vec2(PINE_WIND.x * side, PINE_WIND.y);
     if (fine) gust = pineGust(vec2(p.x, p.y + scroll), uTime);
+    vec3 base = deep * (1.5 - 0.3 * fl) + uPal[2] * (0.08 - 0.03 * fl);
+    // A passing gust turns the needles and they catch a little more sky.
+    float glow = (0.26 + 0.10 * fl) * (fine ? 0.45 + 1.4 * gust : 1.0);
+    vec3 lanePm = vec3(0.0);
+    float laneA = 0.0;
 
     for (int k = 0; k < 14; k++) {
       float c = c0 + float(k);
@@ -1258,48 +1444,78 @@ vec4 canopy(vec2 p, float lit) {
       float ty = (c + 0.2 + 0.6 * hh.y) * spacing - scroll;
       if (ty > ext.y + 0.30) break;
       vec2 tip = vec2(lane * (0.86 + 0.28 * hh.x), ty);
-      float fr;
-      float sh = 0.0;
       float sz = size * (0.80 + 0.40 * hh.y);
+
+      // One outline test for the whole tree before any of its planes.
+      vec2 td = normalize(tip);
+      vec2 tr = mp - tip;
+      float ts = dot(tr, td);
+      if (ts < -0.03 * sz) continue;
       float tt = uTime + fl * 11.0 + hh.y * 5.0;
-      // Two crossed planes per tree. As the tree slides past overhead you see
-      // it from a slowly changing angle, so the face toward you narrows a
-      // little while the crossed one, mostly edge-on, opens up.
-      float turn = abs(sin(ty / ext.y * 1.1 + hh.x * 6.0));
-      float wide = 1.0 - 0.14 * turn;
-      float thin = 0.22 + 0.26 * turn;
-      float a = fine
-        ? pineFine(mp, tip, hh.x, sz, tt, gust, wm, wide, fr, sh)
-        : pine(mp, tip, hh.x, sz, wide, fr);
-      cover = max(cover, a);
-      edge = max(edge, fr);
-      shade = max(shade, sh);
-      {
-        float frX;
-        float shX = 0.0;
-        float hX = fract(hh.x * 3.71 + 0.37);
-        float b = fine
-          ? pineFine(mp, tip, hX, sz * 0.97, tt + 2.3, gust, wm, thin, frX, shX)
-          : pine(mp, tip, hX, sz * 0.97, thin, frX);
-        coverX = max(coverX, b);
-        edgeX = max(edgeX, frX);
+      vec2 rock = pineRock(hh.x, sz, tt);
+      float tsp = max(ts, 0.0);
+      float tx = dot(tr, vec2(-td.y, td.x)) - rock.x * exp(-tsp * 1.4 / sz);
+      float tBody = sz * (0.150 * (1.0 - exp(-tsp * 5.0 / sz)) + 0.045 * tsp);
+      if (abs(tx) > tBody + 0.05 * sz + abs(rock.y - rock.x)) continue;
+
+      // The planes stand evenly around the trunk. As the tree slides past
+      // overhead you see it from a slowly changing angle, so each plane opens
+      // and closes in turn while the outline, the widest of them, holds.
+      float phi = ty / ext.y * 0.65 + hh.x * 3.0;
+      float xs = tx < 0.0 ? -1.0 : 1.0;
+      float pa[PINE_PLANES];
+      float pz[PINE_PLANES];
+      vec3 pc[PINE_PLANES];
+      for (int j = 0; j < PINE_PLANES; j++) {
+        float fj = float(j);
+        float th = phi + fj * (0.5 * TAU / float(PINE_PLANES));
+        float ct = cos(th);
+        float face = abs(ct);
+        float hv = fract(hh.x * 7.31 + fj * 0.618 + 0.13);
+        // Branches differ a little in reach from one side of the trunk to
+        // the next.
+        float w = max(face, 0.16) * (0.92 + 0.08 * hash21(vec2(c + fj * 3.7, fl + side * 2.0)));
+        float fr;
+        float sh = 0.0;
+        float a = fine
+          ? pineFine(mp, tip, hh.x, hv, sz, tt + fj * 2.3, gust, wm, w, rock, fr, sh)
+          : pine(mp, tip, hh.x, hv, sz, w, rock, fr);
+        // How far toward you this plane is where the pixel meets it: x tan th,
+        // eased through edge-on so a plane never jumps from back to front.
+        float z = xs * sin(th) * ct / max(face, 0.25);
+        float near = clamp(0.5 + 0.5 * z, 0.0, 1.0);
+        // Turned edge-on, a plane's needles crowd together and lose the sky;
+        // planes deep in the crown, seen through gaps, sit in its shadow.
+        vec3 cj = base * (0.66 + 0.34 * face) * (0.80 + 0.32 * near);
+        cj *= 1.0 - 0.35 * sh;
+        cj += needle * fr * glow * (0.55 + 0.45 * face);
+        cj += needle * lit * (1.5 + 2.6 * fr) * (0.70 + 0.30 * near);
+        pa[j] = a;
+        pz[j] = z;
+        pc[j] = cj;
       }
+
+      // Lay the planes far to near.
+      vec3 treePm = vec3(0.0);
+      float treeA = 0.0;
+      for (int i = 0; i < PINE_PLANES; i++) {
+        int pick = 0;
+        float fz = 1e8;
+        for (int j = 0; j < PINE_PLANES; j++) {
+          if (pz[j] < fz) { fz = pz[j]; pick = j; }
+        }
+        pz[pick] = 1e9;
+        float a = pa[pick];
+        treePm = pc[pick] * a + treePm * (1.0 - a);
+        treeA = a + treeA * (1.0 - a);
+      }
+      lanePm = treePm + lanePm * (1.0 - treeA);
+      laneA = treeA + laneA * (1.0 - treeA);
     }
 
-    vec3 c = deep * (1.5 - 0.3 * fl) + uPal[2] * (0.08 - 0.03 * fl);
-    // Seen from below, the crossed plane's near half hangs in front of the
-    // middle of the wide face: its underside, a shade darker, with its own
-    // tiers falling between the wide face's so the crown reads as round.
-    vec3 cX = c * 0.78 + needle * edgeX * (0.30 + 0.10 * fl) * (fine ? 0.45 + 1.4 * gust : 1.0)
-            + needle * lit * (1.2 + 2.2 * edgeX);
-    c *= 1.0 - 0.35 * shade;
-    // A passing gust turns the needles and they catch a little more sky.
-    c += needle * edge * (0.26 + 0.10 * fl) * (fine ? 0.45 + 1.4 * gust : 1.0);
-    c += needle * lit * (1.5 + 2.6 * edge);
-    c = mix(c, cX, coverX);
-    float cv = max(cover, coverX);
-    rgb = mix(rgb, c, cv);
-    alpha += cv * (1.0 - alpha);
+    vec3 c = lanePm / max(laneA, 1e-4);
+    rgb = mix(rgb, c, laneA);
+    alpha += laneA * (1.0 - alpha);
   }
 
   if (fine) {
@@ -3189,6 +3405,8 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         state.gvx += (vx - state.gvx) * k;
         state.gvy += (vy - state.gvy) * k;
         var sp = Math.hypot(state.gvx, state.gvy);
+        // The stroke's own path, which draws the dust in and carries it along.
+        streamPoint(state, x, y, state.gvx, state.gvy);
         var push = GUST_TOP * (1 - Math.exp(-sp / GUST_KNEE));
         var tt = time + state.gseed;
         var breath = clamp(0.5 + 0.5 * Math.sin(tt * 6.1) * Math.sin(tt * 2.3 + 1.1) + 0.18 * Math.sin(tt * 13.7 + 0.4), 0, 1);
@@ -3889,6 +4107,147 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         }
       }
 
+      // --- The brush's path (under the sky) --------------------------------
+      // A wind stroke leaves a channel of moving air along the line it was
+      // drawn. Dust near the channel is sucked in, and dust inside it is
+      // carried along it from where the stroke began toward where it ended,
+      // following its bends. Each sample keeps the path's direction there.
+      // Widths are in brush radii (0.075 * brush, the gust's own radius).
+      var STREAM_LIFE = 4.5;       // seconds a stretch of path keeps working; it fades over the last 60%
+      var STREAM_CORE = 1.6;       // channel half-width, in brush radii
+      var STREAM_REACH = 4.8;      // suction reach from the path's centre line, in brush radii
+      var STREAM_SUCK = 1.4;       // pull toward the channel at its edge, units/s²
+      var STREAM_GRIP = 9.0;       // how fast dust in the channel takes up its flow, 1/s
+      var STREAM_FLOW_MIN = 0.40;  // flow along a slowly drawn path, units/s
+      var STREAM_FLOW_MAX = 1.00;  // the flow never goes faster than this
+      var STREAM_CARRY = 0.30;     // share of the drag speed added to the flow
+      var STREAM_STEP = 0.5;       // one sample per this many brush radii of path
+      var STREAM_CHUNK = 12;       // segments per bounding box, for the dust's quick reject
+      var MAX_STREAMS = 12;
+      var MAX_STREAM_PTS = 200;    // per stroke
+      var streams = [];
+
+      function streamPoint(state, x, y, vx, vy) {
+        var r = 0.075 * settings.brush;
+        var s = state.stream;
+        if (!s || streams.indexOf(s) < 0) {
+          if (streams.length >= MAX_STREAMS) streams.shift();
+          s = { state: state, pts: [], boxes: [], live: true };
+          streams.push(s);
+          state.stream = s;
+        }
+        var pts = s.pts;
+        var sp = Math.hypot(vx, vy);
+        var lastP = pts[pts.length - 1];
+        var tx, ty;
+        if (lastP) {
+          var dx = x - lastP.x;
+          var dy = y - lastP.y;
+          var d = Math.hypot(dx, dy);
+          if (d < r * STREAM_STEP) return;
+          tx = dx / d;
+          ty = dy / d;
+          // The previous sample now has a way in and a way out: average them,
+          // so the flow turns smoothly through a bend.
+          if (pts.length > 1) {
+            var bx = lastP.tx + tx;
+            var by = lastP.ty + ty;
+            var bl = Math.hypot(bx, by);
+            if (bl > 1e-4) { lastP.tx = bx / bl; lastP.ty = by / bl; }
+          } else {
+            lastP.tx = tx;
+            lastP.ty = ty;
+          }
+        } else {
+          if (sp < 1e-4) return;
+          tx = vx / sp;
+          ty = vy / sp;
+        }
+        pts.push({ x: x, y: y, tx: tx, ty: ty, sp: sp, born: time });
+        if (pts.length > MAX_STREAM_PTS) pts.shift();
+      }
+
+      function updateStreams(dt) {
+        if (skyAmount <= 0) { streams.length = 0; return; }
+        // The channel drifts with the cloud it was cut through.
+        var wind = dt * SKY_WIND * skyAmount * (reduceMotion ? 0.35 : 1);
+        var reach = 0.075 * settings.brush * STREAM_REACH;
+        for (var i = streams.length - 1; i >= 0; i--) {
+          var s = streams[i];
+          var pts = s.pts;
+          while (pts.length && time - pts[0].born > STREAM_LIFE) pts.shift();
+          s.live = active.get(s.state.id) === s.state;
+          s.boxes.length = 0;
+          if (!pts.length) {
+            if (!s.live) streams.splice(i, 1);
+            continue;
+          }
+          for (var k = 0; k < pts.length; k++) pts[k].x += wind;
+          // Boxes over runs of STREAM_CHUNK segments; neighbours share an end.
+          for (var c = 0; c < pts.length; c += STREAM_CHUNK) {
+            var end = Math.min(pts.length - 1, c + STREAM_CHUNK);
+            var x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+            for (var m = c; m <= end; m++) {
+              var pt = pts[m];
+              if (pt.x < x0) x0 = pt.x;
+              if (pt.x > x1) x1 = pt.x;
+              if (pt.y < y0) y0 = pt.y;
+              if (pt.y > y1) y1 = pt.y;
+            }
+            s.boxes.push(c, end, x0 - reach, y0 - reach, x1 + reach, y1 + reach);
+            if (end === pts.length - 1) break;
+          }
+        }
+      }
+
+      // The nearest point of the path to (px, py), written into streamHit.
+      // beyond: how far past the path's last point it lies, along the path.
+      var streamHit = { d2: 0, x: 0, y: 0, tx: 0, ty: 0, age: 0, sp: 0, beyond: 0 };
+      function nearestOnStream(s, px, py) {
+        var pts = s.pts;
+        var n = pts.length;
+        var boxes = s.boxes;
+        var best = 1e9;
+        if (n === 1) {
+          var P = pts[0];
+          if (!boxes.length || px < boxes[2] || py < boxes[3] || px > boxes[4] || py > boxes[5]) return false;
+          best = (px - P.x) * (px - P.x) + (py - P.y) * (py - P.y);
+          streamHit.x = P.x; streamHit.y = P.y; streamHit.tx = P.tx; streamHit.ty = P.ty;
+          streamHit.age = time - P.born; streamHit.sp = P.sp;
+          streamHit.beyond = Math.max(0, (px - P.x) * P.tx + (py - P.y) * P.ty);
+          streamHit.d2 = best;
+          return true;
+        }
+        for (var b = 0; b < boxes.length; b += 6) {
+          if (px < boxes[b + 2] || py < boxes[b + 3] || px > boxes[b + 4] || py > boxes[b + 5]) continue;
+          for (var k = boxes[b]; k < boxes[b + 1]; k++) {
+            var A = pts[k];
+            var B = pts[k + 1];
+            var ex = B.x - A.x;
+            var ey = B.y - A.y;
+            var el2 = ex * ex + ey * ey + 1e-12;
+            var t = ((px - A.x) * ex + (py - A.y) * ey) / el2;
+            var beyond = k === n - 2 && t > 1 ? (t - 1) * Math.sqrt(el2) : 0;
+            t = t < 0 ? 0 : (t > 1 ? 1 : t);
+            var cx = A.x + ex * t;
+            var cy = A.y + ey * t;
+            var d2 = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+            if (d2 < best) {
+              best = d2;
+              streamHit.x = cx;
+              streamHit.y = cy;
+              streamHit.tx = A.tx + (B.tx - A.tx) * t;
+              streamHit.ty = A.ty + (B.ty - A.ty) * t;
+              streamHit.age = time - (A.born + (B.born - A.born) * t);
+              streamHit.sp = A.sp + (B.sp - A.sp) * t;
+              streamHit.beyond = beyond;
+            }
+          }
+        }
+        streamHit.d2 = best;
+        return best < 1e8;
+      }
+
       // --- Dust physics tuning (scene units, per second) -------------------
       var DUST_DRAG = 2.4;        // linear drag: how quickly dust settles
       var DUST_DRAG_FAST = 2.0;   // extra drag per unit of speed: tames flicks
@@ -3925,8 +4284,11 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         if (active.size > 0) {
           if (!moonMode) orbStir.stirX = undefined;
           // Dark parts the dust around the brush; light draws it in a little.
+          // Under the sky the dark brush is wind, which draws dust in along
+          // its path (streams), so it barely parts it.
+          var windPart = 1.5 - 1.25 * (flowOK ? skyAmount : 0);
           active.forEach(function (state) {
-            trackStir(state, state.x, state.y, dt, state.kind === 'light' ? -0.4 : 1.5, 1.0);
+            trackStir(state, state.x, state.y, dt, state.kind === 'light' ? -0.4 : (state.moon ? 1.5 : windPart), 1.0);
           });
         } else if (!moonMode) {
           // The resting pearl stirs gently too, so hovering already feels alive.
@@ -3943,6 +4305,10 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         var orbitR = 0.07 + 0.05 * settings.brush;
         buildStirrers(dt);
         updatePuffs(dt);
+        updateStreams(dt);
+        var streamCore = 0.075 * settings.brush * STREAM_CORE;
+        var streamReach = 0.075 * settings.brush * STREAM_REACH;
+        var streamReach2 = streamReach * streamReach;
         var skyOn = skyAmount > 0.001;
         // The steady wind comes and goes in long, slow breaths.
         var windBreath = 0.55 + 0.45 * Math.sin(time * 0.13) * Math.sin(time * 0.051 + 1.3) + 0.25;
@@ -3983,6 +4349,35 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
                 ay += fdy / fdl * pf.radial * fw * 1.4 * vscale;
               }
               p.flash = Math.max(p.flash, fw * 0.25);
+            }
+            // The brush's path: dust nearby is sucked toward it, and dust in
+            // it takes up the path's flow, start to end, round its bends.
+            for (var sn = 0; sn < streams.length; sn++) {
+              var sm = streams[sn];
+              if (!sm.pts.length || !nearestOnStream(sm, px, py)) continue;
+              if (streamHit.d2 > streamReach2) continue;
+              var life = 1 - smoothstep(STREAM_LIFE * 0.4, STREAM_LIFE, streamHit.age);
+              if (life <= 0) continue;
+              life *= skyAmount;
+              var sdist = Math.sqrt(streamHit.d2);
+              // Suction: none on the centre line, strongest at the channel's
+              // edge, gone at its reach. Past the end of a finished stroke the
+              // dust is let go, so it flies on instead of piling up there.
+              var suck = smoothstep(0, streamCore, sdist) * (1 - smoothstep(streamCore, streamReach, sdist));
+              if (!sm.live) suck *= 1 - smoothstep(0, streamCore, streamHit.beyond);
+              var sinvd = 1 / (sdist + 1e-4);
+              ax += (streamHit.x - px) * sinvd * suck * STREAM_SUCK * life;
+              ay += (streamHit.y - py) * sinvd * suck * STREAM_SUCK * life;
+              // Inside: carried along the path.
+              var inside = 1 - smoothstep(streamCore * 0.75, streamCore * 1.2, sdist);
+              if (inside > 0) {
+                var stl = Math.hypot(streamHit.tx, streamHit.ty) + 1e-6;
+                var flowSp = Math.min(STREAM_FLOW_MAX, STREAM_FLOW_MIN + streamHit.sp * STREAM_CARRY) * vscale;
+                var cg = Math.min(1, inside * life * STREAM_GRIP * dt);
+                p.vx += (streamHit.tx / stl * flowSp - p.vx) * cg;
+                p.vy += (streamHit.ty / stl * flowSp - p.vy) * cg;
+                p.flash = Math.max(p.flash, inside * life * 0.18);
+              }
             }
           }
 
@@ -4306,6 +4701,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         clearMask();
         lights.length = 0;
         attractors.length = 0;
+        streams.length = 0;
         lightData.fill(0);
         for (var i = 0; i < particles.length; i++) {
           var p = particles[i];
@@ -4511,6 +4907,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         if (dt > 0.06) dt = 0.06;
         if (dt < 0) dt = 0;
         time += dt * 0.92;
+        labTick(dt);
         if (!reduceMotion && !down && time > nextPulse) {
           addShock(pointer.x, pointer.y, 0.26, moonMode ? MOON_SHOCK_REACH : 1);
           burstParticles(pointer.x, pointer.y, 8, 0.42);
@@ -4873,7 +5270,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       document.addEventListener('keydown', function (e) {
         if (e.metaKey || e.ctrlKey || e.altKey) return;
         var tag = e.target && e.target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         if (e.key === 'm' || e.key === 'M') {
           setMood(moodIndex + 1, false);
           e.preventDefault();
@@ -4882,6 +5279,10 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           e.preventDefault();
         } else if (e.key === 'Escape') {
           setTuneOpen(false);
+          setLabOpen(false);
+        } else if (e.key === 'l' || e.key === 'L') {
+          setLabOpen(!document.body.classList.contains('labbing'));
+          e.preventDefault();
         } else if (e.key === 'c' || e.key === 'C') {
           stillVeil();
           e.preventDefault();
@@ -4981,6 +5382,829 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       }
 
       start();
+
+      // ---- lab: begin ----
+      // The lab (L, or ?lab in the URL): a drawer that lists VoidDrag's
+      // parameters, lets you change them while it runs, and shows where each
+      // one lives and every line that reads it. Nothing here runs until the
+      // drawer is first opened, apart from labTick's early return. Constants
+      // changed here last until reload; tune values save as they always do.
+      // The source scanner skips the lines between the begin and end markers,
+      // so the lab never lists itself.
+      var LAB_GROUPS = [
+        { id: 'tune', title: 'tune panel', note: 'The settings object: loaded from localStorage (opal.tune), changed by the tune panel (T). The lab moves the panel\u2019s own sliders, so changes save exactly as they would there.' },
+        { id: 'wind', title: 'brush & wind', note: 'Under the sky a dark stroke is wind. gustAt() turns the finger\u2019s speed into gusts; stepFlow() hands them to a three-pass GPU wind sim (velocity \u2192 cloud map \u2192 sky view) that tears and heals the cloud.' },
+        { id: 'streams', title: 'stroke streams', note: 'A stroke under the sky leaves a channel of moving air along its path. streamPoint() samples the path; updateParticles() sucks dust toward it and carries it along. Widths are in brush radii (0.075 \u00d7 brush).' },
+        { id: 'dust', title: 'dust physics', note: 'updateParticles() runs every mote every frame: each force adds to the velocity, then drag and the speed cap pull it back. Units are scene units (screen height = 2) and seconds.' },
+        { id: 'motes', title: 'night motes', note: 'How the dust looks and drifts under the night sky (sky on, K). The brightness values are only used while the sky is up.' },
+        { id: 'moon', title: 'the moon', note: 'The moon cursor (cursor \u00b7 moon, B). updateMoon() moves it only while a finger that landed on it holds it; moonGusts() is the air it moves.' },
+        { id: 'events', title: 'ripples & flyers', note: 'Ripple rings from taps and the idle pulse, and the rare bat or owl (F sends one now, Shift+F an owl).' },
+        { id: 'timing', title: 'sky & touch timing', note: 'The sky\u2019s steady drift and the touch tap timings.' },
+        { id: 'struct', title: 'structural (read-only)', note: 'These size arrays, textures or shader uniform arrays when the page starts, or are read once at startup. Changing one means editing the file and reloading, and several must match a size written into the shader.' },
+        { id: 'shader', title: 'shader constants (read-only)', note: 'GLSL constants compiled into the fragment shader. Changing one means editing the shader text and reloading. Watch out: a backtick in a GLSL comment ends the JS template string and blanks the page.' }
+      ];
+
+      // n: the name (and the variable it reads/writes); find: what to search the
+      // source for; g: group; min/max/step: the lab's range (tune ones come from
+      // the panel's own slider); ro: read-only; snap: keep to whole steps.
+      var LAB_PARAMS = [
+        // --- tune panel ---
+        { n: 'brush', g: 'tune', tune: true, find: ['settings.brush'],
+          what: 'Brush width: one multiplier on the radius of everything a stroke or tap touches.',
+          small: 'Gust splats are 0.075 \u00d7 brush wide (gustAt), marks and light blooms scale by it (addMark, addLight), dust is stirred within 0.20 + 0.10 \u00d7 brush and orbits light at 0.07 + 0.05 \u00d7 brush (updateParticles).',
+          large: 'Stream widths are measured in brush radii, so a wide brush also cuts wide channels that pull dust in from further away. Over a session wide strokes clear most of the cloud; narrow ones write lines.' },
+        { n: 'trail', g: 'tune', tune: true, find: ['settings.trail', 'erodeForTrail', 'uErode'],
+          what: 'How long a mark lasts. Under the sky it sets how fast parted cloud heals; in the void it fades the darkness mask and erodes its edge.',
+          small: 'Each mark\u2019s life is multiplied by trail (addMark). In the void the shader\u2019s edge threshold is uErode = 0.38 \u00d7 (1 \u2212 (trail/8)^0.55), so low trails shrink a stroke into itself with a wobbled edge.',
+          large: 'Under the sky the heal time constant is (1.5 + 3.2 \u00d7 trail) \u00d7 healScale() seconds, about 7.9 s at 2.0 (stepFlow, healSky). In the void the mask fades with max(1.5, 16 \u00d7 trail) s (fadeMask). At 7.95 and up nothing fades or erodes: the field keeps everything until still (C).' },
+        { n: 'particles', g: 'tune', tune: true, snap: true, find: ['settings.particles', 'activeParticles'],
+          what: 'How many dust motes are simulated and drawn.',
+          small: 'Sets activeParticles. The pool always holds MAX_PARTICLES; updateParticles and uploadParticles just loop over the first N, so motes past N stop where they are and are not drawn.',
+          large: 'The density of the dust that makes the wind visible. Cost grows linearly: every mote tests every puff, stream, ripple, light and stirrer each frame.' },
+        { n: 'velocity', g: 'tune', tune: true, find: ['settings.velocity', 'vscale'],
+          what: 'Gain on everything that moves the dust.',
+          small: 'Becomes vscale in updateParticles and multiplies every acceleration there (drift, puffs, streams, ripples, light, stirring) and the speeds dust is carried at. At 0 the stirring loop is skipped entirely.',
+          large: 'Low values make the dust heavy and calm; high ones make it race along strokes. DUST_MAX_SPEED still caps it, so past a point you see more dust at the cap rather than faster dust.' },
+        { n: 'veil', g: 'tune', tune: true, find: ['settings.veil', 'uVeil'],
+          what: 'Brightness of the living veil: the glowing surface of the void.',
+          small: 'Sent every frame as the uVeil uniform. In the shader it multiplies the veil\u2019s shell glow (value = shell \u00d7 fibrous \u00d7 breath \u00d7 uVeil) and its rim light.',
+          large: 'The light level of the whole void: below 1 the veil sinks into the dark, above 1 it glows, and the overlay colour brightens by 0.75 + 0.5 \u00d7 uVeil.' },
+        { n: 'pace', g: 'tune', tune: true, find: ['settings.pace'],
+          what: 'Speed of the ride: the pine tops marching down both sides.',
+          small: 'travel grows by dt \u00d7 0.16 \u00d7 pace (frame) and the shader draws the canopy at uTravel. The dust also falls behind at 0.12 \u00d7 pace (updateParticles).',
+          large: 'Only shows with the ride on (R). Faster pace streams the trees by and lets the dust drift down the view.' },
+        { n: 'curve', g: 'tune', tune: true, find: ['settings.curve', 'uInkCurve'],
+          what: 'Bias of the three-stop ink ramp toward its low or high stop.',
+          small: 'In the shader the ramp position t (0 = low ink, 1 = high ink) becomes pow(t, 2^(curve \u00d7 1.8)): \u22121 is a power of 0.29 (lifts toward high), +1 a power of 3.5 (sinks toward low).',
+          large: 'Shifts the tonality of the veil, light and dust without changing the three colours.' },
+        { n: 'ink0', g: 'tune', tune: true, color: true, find: ['settings.ink0', 'uInk'],
+          what: 'The low ink stop: colour of the dim parts of the veil, light and dust.',
+          small: 'writeInk() converts it to linear RGB (hexToRgb, linear) into inkLinear and sends it as uInk[0].',
+          large: 'Recolours the shadows of everything that is lit with ink.' },
+        { n: 'ink1', g: 'tune', tune: true, color: true, find: ['settings.ink1', 'uInk'],
+          what: 'The mid ink stop.', small: 'Sent as uInk[1] by writeInk().', large: 'The colour most of the veil sits at.' },
+        { n: 'ink2', g: 'tune', tune: true, color: true, find: ['settings.ink2', 'uInk'],
+          what: 'The high ink stop: the brightest highlights.', small: 'Sent as uInk[2] by writeInk().', large: 'Recolours highlights, light blooms and bright dust.' },
+
+        // --- brush & wind ---
+        { n: 'GUST_TOP', g: 'wind', min: 0.1, max: 4, step: 0.05,
+          what: 'The fastest air a drag can push into the wind field (scene units/s).',
+          small: 'In gustAt the push is GUST_TOP \u00d7 (1 \u2212 e^(\u2212speed / GUST_KNEE)): it rises with drag speed and levels off at this ceiling.',
+          large: 'How violently a flick tears the cloud and how far it throws the torn edges. High values rip long streaks; low ones only nudge.' },
+        { n: 'GUST_KNEE', g: 'wind', min: 0.1, max: 5, step: 0.05,
+          what: 'The drag speed at which the push reaches about 63% of GUST_TOP.',
+          small: 'It is the divisor in e^(\u2212speed / GUST_KNEE). A low knee means even a slow drag pushes at nearly full strength; a high one means you have to flick.',
+          large: 'The feel of the brush: touchy (low) or needing effort (high).' },
+        { n: 'GUST_GRIP_FAST', g: 'wind', min: 0, max: 1, step: 0.01,
+          what: 'How much fast air loses its grip on the cloud.',
+          small: 'grip = 0.55 \u00d7 brushScale() \u00d7 gusty / (1 + GUST_GRIP_FAST \u00d7 speed). At 0 a flick grips as hard as a slow drag.',
+          large: 'Balances flicks against slow strokes: raise it if flicks tear too hard, lower it for violent tears.' },
+        { n: 'GUST_BREATH', g: 'wind', min: 0, max: 1, step: 0.01,
+          what: 'How much a fast stroke swells and slackens along its length.',
+          small: 'gusty = 1 \u2212 min(0.75, speed \u00d7 GUST_BREATH) \u00d7 (1 \u2212 breath), where breath is a mix of sines per stroke. It scales both the push and the grip.',
+          large: '0 gives even, blade-like strokes; high values give pulsing, uneven gusts.' },
+        { n: 'BRUSH_UNDER_MOON', g: 'wind', min: 0, max: 1.5, step: 0.05,
+          what: 'Cloud-brush strength while the moon is the cursor (1 = as strong as with the pearl).',
+          small: 'brushScale() fades from 1 to this as the moon fades in. gustAt multiplies the grip by it and the push by 0.4 + 0.6 \u00d7 it; addMark and bloom scale strengths by it.',
+          large: 'With the moon cursor strokes are deliberately gentler. Set it to 1 to brush as hard as in pearl mode (B).' },
+        { n: 'HEAL_UNDER_MOON', g: 'wind', min: 1, max: 8, step: 0.1,
+          what: 'How many times longer parted cloud takes to close while the moon is the cursor.',
+          small: 'healScale() = 1 + (HEAL_UNDER_MOON \u2212 1) \u00d7 moonAmount multiplies the heal time constant: uRelax in stepFlow and the mask fade in healSky.',
+          large: 'High values keep every opening for a long time with the moon; 1 heals as quickly as with the pearl.' },
+        { n: 'PUFF_LIFE', g: 'wind', min: 0.1, max: 8, step: 0.1,
+          what: 'Seconds a puff (the air a gust leaves moving) is still felt by the dust.',
+          small: 'updatePuffs weights a puff by e^(\u2212age / 0.6) and widens it by 80% a second, then removes it after PUFF_LIFE.',
+          large: 'A lesson in hidden limits: the weight is already ~3% at 2 s, so raising this changes almost nothing. Lowering it below ~1 s cuts the dust\u2019s after-swirl short.' },
+        { n: 'FLOW_LONG', g: 'wind', min: 64, max: 768, step: 32, snap: true, noSweep: true,
+          what: 'Resolution of the GPU wind grid along the long side of the screen.',
+          small: 'flowDims() turns it into FLOW_W \u00d7 FLOW_H. stepFlow notices the change and calls flow.rebuild(), which recreates the textures and clears the wind field.',
+          large: 'Coarse grids tear in soft, blocky steps and are cheap; fine grids tear crisply and cost GPU time (the cell count grows with the square). No sweep: each change rebuilds the textures.' },
+
+        // --- streams ---
+        { n: 'STREAM_LIFE', g: 'streams', min: 0.3, max: 15, step: 0.1,
+          what: 'Seconds a stretch of a stroke\u2019s path keeps channelling dust.',
+          small: 'updateStreams drops samples older than this. updateParticles fades their pull over the last 60%: 1 \u2212 smoothstep(0.4 \u00d7 life, life, age).',
+          large: 'Long lives leave rivers of dust along old strokes; short ones make the dust follow only the finger.' },
+        { n: 'STREAM_CORE', g: 'streams', min: 0.2, max: 5, step: 0.1,
+          what: 'Half-width of a stroke\u2019s channel, in brush radii.',
+          small: 'Dust inside the core is carried along the path. Suction is zero on the centre line, strongest at the core\u2019s edge and gone at STREAM_REACH.',
+          large: 'Wide cores make broad rivers of dust; narrow ones thin threads. Keep it below STREAM_REACH, or the suction band disappears.' },
+        { n: 'STREAM_REACH', g: 'streams', min: 0.5, max: 12, step: 0.1,
+          what: 'How far from the path dust is sucked in, in brush radii.',
+          small: 'Suction fades out between STREAM_CORE and here. updateStreams also pads each chunk\u2019s bounding box by it, for the quick reject.',
+          large: 'A large reach gathers dust from much of the screen into each stroke, and costs more because fewer motes are rejected early.' },
+        { n: 'STREAM_SUCK', g: 'streams', min: 0, max: 6, step: 0.05,
+          what: 'Pull toward the channel at its edge (units/s\u00b2).',
+          small: 'An acceleration toward the nearest point on the path, times the suction profile and the path\u2019s remaining life.',
+          large: 'At 0 dust only rides a channel if it was already inside; high values make strokes visibly vacuum the dust in.' },
+        { n: 'STREAM_GRIP', g: 'streams', min: 0, max: 30, step: 0.5,
+          what: 'How fast dust inside a channel takes up its flow (1/s).',
+          small: 'Each frame the dust\u2019s velocity moves toward the flow by min(1, inside \u00d7 life \u00d7 STREAM_GRIP \u00d7 dt).',
+          large: 'Low grip: dust drifts lazily along. High grip: it locks onto the path like beads on a wire.' },
+        { n: 'STREAM_FLOW_MIN', g: 'streams', min: 0, max: 2, step: 0.02,
+          what: 'Flow speed along a slowly drawn path (units/s).',
+          small: 'flow = min(STREAM_FLOW_MAX, STREAM_FLOW_MIN + drawSpeed \u00d7 STREAM_CARRY) \u00d7 velocity.',
+          large: 'How fast dust runs along gentle strokes.' },
+        { n: 'STREAM_FLOW_MAX', g: 'streams', min: 0, max: 3, step: 0.05,
+          what: 'The ceiling on the flow along any path (units/s).',
+          small: 'The min() in the flow formula above. If it is below STREAM_FLOW_MIN, it wins.',
+          large: 'Caps fast strokes so dust never shoots along them.' },
+        { n: 'STREAM_CARRY', g: 'streams', min: 0, max: 1.5, step: 0.01,
+          what: 'Share of the drawing speed added to the flow.',
+          small: 'Each path sample remembers how fast it was drawn (sp); the flow adds sp \u00d7 STREAM_CARRY.',
+          large: 'At 0 every stroke flows at the same speed; higher values make fast strokes leave faster rivers.' },
+        { n: 'STREAM_STEP', g: 'streams', min: 0.1, max: 3, step: 0.05,
+          what: 'Path sampling: one sample per this many brush radii of movement.',
+          small: 'streamPoint ignores a move shorter than 0.075 \u00d7 brush \u00d7 STREAM_STEP from the last sample.',
+          large: 'Small steps follow bends closely but cost more (more segments for every mote to test) and fill MAX_STREAM_PTS sooner, so long strokes lose their tail. Large steps give angular, cheap paths.' },
+        { n: 'STREAM_CHUNK', g: 'streams', min: 1, max: 60, step: 1, snap: true,
+          what: 'Segments per bounding box, for the dust\u2019s quick reject.',
+          small: 'updateStreams groups the path into boxes of this many segments; nearestOnStream skips any box a mote is outside.',
+          large: 'A pure performance knob: the picture should not change at all. That is what an optimisation looks like in code: same result, less work.' },
+        { n: 'MAX_STREAMS', g: 'streams', min: 1, max: 40, step: 1, snap: true,
+          what: 'How many recent strokes keep their channels.',
+          small: 'streamPoint drops the oldest stream (streams.shift()) when a new stroke starts past this count.',
+          large: 'Matters for many fingers or quick repeated strokes: older channels vanish early when it is low.' },
+        { n: 'MAX_STREAM_PTS', g: 'streams', min: 10, max: 800, step: 10, snap: true,
+          what: 'Samples kept per stroke; the oldest drop off the tail.',
+          small: 'streamPoint shifts the first sample off when the path grows past this.',
+          large: 'Low values make long strokes keep only their newest stretch.' },
+
+        // --- dust physics ---
+        { n: 'DUST_DRAG', g: 'dust', min: 0, max: 10, step: 0.05,
+          what: 'Linear drag: how quickly dust settles (1/s).',
+          small: 'Each frame velocity \u00d7= e^(\u2212(DUST_DRAG + DUST_DRAG_FAST \u00d7 speed + extra) \u00d7 dt).',
+          large: 'Low drag: dust coasts and swirls for seconds. High: it stops almost at once. The steady sky wind on motes is also multiplied by DUST_DRAG, so their drift speed stays the same either way. That is a deliberate coupling.' },
+        { n: 'DUST_DRAG_FAST', g: 'dust', min: 0, max: 10, step: 0.05,
+          what: 'Extra drag per unit of speed: tames flicks.',
+          small: 'Adds DUST_DRAG_FAST \u00d7 speed to the drag rate, so drag grows with speed.',
+          large: 'Fast dust brakes hard and slow dust barely feels it. At 0 flicks fling dust much further.' },
+        { n: 'DUST_MAX_SPEED', g: 'dust', min: 0.05, max: 5, step: 0.05,
+          what: 'Hard ceiling on dust speed (units/s).',
+          small: 'If the damped speed would pass it, the damping is set so the speed is exactly this.',
+          large: 'Low values put every strong stroke into slow motion; high ones let flicks shoot dust across the screen.' },
+        { n: 'STIR_MAX', g: 'dust', min: 0.1, max: 6, step: 0.1,
+          what: 'The pointer speed is clamped to this before it stirs the dust.',
+          small: 'trackStir caps each stirrer\u2019s velocity at STIR_MAX, then smooths it.',
+          large: 'Low values make fast and slow strokes stir alike.' },
+        { n: 'STIR_CARRY', g: 'dust', min: 0, max: 1.5, step: 0.01,
+          what: 'Share of the pointer\u2019s velocity the dust under it picks up.',
+          small: 'Dust under a stirrer moves toward st.v \u00d7 STIR_CARRY \u00d7 velocity.',
+          large: 'At 1 dust is dragged along at the finger\u2019s own speed; at 0 it only parts and curls.' },
+        { n: 'STIR_GRIP', g: 'dust', min: 0, max: 40, step: 0.5,
+          what: 'How fast dust under the pointer takes up its motion (1/s).',
+          small: 'grip = min(1, falloff \u00d7 move \u00d7 gain \u00d7 STIR_GRIP \u00d7 dt).',
+          large: 'Low: the brush slides over the dust. High: dust sticks to the brush.' },
+        { n: 'RIPPLE_PUSH', g: 'dust', min: 0, max: 4, step: 0.05,
+          what: 'The outward nudge as a ripple ring passes.',
+          small: 'push = ring \u00d7 e^(\u22121.6 \u00d7 age) \u00d7 RIPPLE_PUSH (moon shocks use fade^8 instead of the exponential).',
+          large: 'Shows on taps and the idle pulse every 8\u201315 s: high values blow the dust out in rings.' },
+        { n: 'GATHER_PULL', g: 'dust', min: 0, max: 6, step: 0.05,
+          what: 'Maximum pull of light blooms on dust.',
+          small: 'The summed force of all attractors is clamped to this length.',
+          large: 'The light brush (right-click, or the light mode on touch): how hard dust is gathered into halos.' },
+
+        // --- night motes ---
+        { n: 'MOTE_BRIGHT', g: 'motes', min: 0, max: 2, step: 0.02,
+          what: 'Brightness of a resting mote under the sky.',
+          small: 'skyGlow = MOTE_BRIGHT \u00d7 (0.30 + 0.70 \u00d7 lum) \u00d7 twinkle + glint + moonlight + speed glow.',
+          large: 'How visible the dust in the night air is overall.' },
+        { n: 'MOTE_MOON', g: 'motes', min: 0, max: 3, step: 0.05,
+          what: 'Extra light on motes seen near the moon.',
+          small: 'Adds lit \u00d7 MOTE_MOON \u00d7 (0.35 + 0.65 \u00d7 lum) to skyGlow.',
+          large: 'The silver halo of dust around the moon.' },
+        { n: 'MOTE_MOON_REACH', g: 'motes', min: 0.02, max: 1.5, step: 0.01,
+          what: 'How far past the moon\u2019s disc that light reaches (an e-folding distance).',
+          small: 'lit = e^(\u2212max(0, distance \u2212 MOON_R) / MOTE_MOON_REACH). Note that it starts at the JS MOON_R.',
+          large: 'Small: only dust touching the disc lights up. Large: the whole sky glitters.' },
+        { n: 'MOTE_GLINT', g: 'motes', min: 0, max: 3, step: 0.05,
+          what: 'Brightness of a flake\u2019s brief glint as it turns.',
+          small: 'About a third of motes are flakes; each glints on its own cycle (glintRate), more often near the moon.',
+          large: 'The sparkle in the air.' },
+        { n: 'MOTE_WIND', g: 'motes', min: 0, max: 0.3, step: 0.005,
+          what: 'Steady drift of the farthest motes (units/s); the nearest go about 4\u00d7 as fast.',
+          small: 'ax += MOTE_WIND \u00d7 (0.8 + 3.2 \u00d7 near\u00b2) \u00d7 windBreath \u00d7 DUST_DRAG: a force sized so drag balances it at about MOTE_WIND.',
+          large: 'Separate from SKY_WIND, the clouds\u2019 drift: raise it and the dust outruns the clouds, which reads as nearer air.' },
+        { n: 'MOTE_CARRY', g: 'motes', min: 0, max: 2, step: 0.02,
+          what: 'Share of a puff\u2019s speed the dust picks up.',
+          small: 'Dust inside a puff moves toward pf.v \u00d7 MOTE_CARRY \u00d7 velocity.',
+          large: 'How much the dust shows the brush\u2019s air after the finger has passed.' },
+        { n: 'MAX_PUFFS', g: 'motes', min: 1, max: 120, step: 1, snap: true,
+          what: 'How many puffs can be alive at once (the oldest is dropped).',
+          small: 'addPuff shifts the oldest one off past this count.',
+          large: 'Low values make the after-air of long strokes vanish early.' },
+
+        // --- the moon ---
+        { n: 'MOON_MAX_SPEED', g: 'moon', min: 0.02, max: 2, step: 0.01,
+          what: 'Top speed of the moon while dragged (units/s; the screen is 2 tall).',
+          small: 'updateMoon caps the wanted velocity at it, and brakeAxis uses it as the outward speed limit near the edges.',
+          large: 'At 0.30 a crossing is stately; at 2 the moon follows almost like a cursor.' },
+        { n: 'MOON_FOLLOW', g: 'moon', min: 0.1, max: 6, step: 0.05,
+          what: 'Wanted speed per unit of distance to the finger.',
+          small: 'wanted = (finger \u2212 moon) \u00d7 MOON_FOLLOW, then capped by MOON_MAX_SPEED.',
+          large: 'High: it hurries even when the finger is close. Low: it creeps over the last stretch.' },
+        { n: 'MOON_GRIP', g: 'moon', min: 0.1, max: 20, step: 0.1,
+          what: 'How fast it gathers speed while held (1/s).',
+          small: 'Each frame its velocity moves toward the wanted one by min(1, dt \u00d7 MOON_GRIP).',
+          large: 'Low: heavy, slow to get going. High: immediate.' },
+        { n: 'MOON_DRAG', g: 'moon', min: 0.1, max: 30, step: 0.1,
+          what: 'How fast it loses momentum once let go (1/s).',
+          small: 'When not held: velocity \u00d7= e^(\u2212dt \u00d7 MOON_DRAG).',
+          large: 'Low drag lets it coast across the sky after release.' },
+        { n: 'MOON_BRAKE_ZONE', g: 'moon', min: 0.02, max: 1.5, step: 0.01,
+          what: 'Distance from the edge at which it starts to brake.',
+          small: 'brakeAxis lets the outward speed fall linearly from full at this distance to zero at the edge.',
+          large: 'Small: it runs to the edge and stops dead. Large: it slows early and drifts in.' },
+        { n: 'MOON_PUSH', g: 'moon', min: 0, max: 12, step: 0.1,
+          what: 'How hard its passage pushes the cloud.',
+          small: 'moonGusts adds a gust moving at moonVel \u00d7 MOON_PUSH, and a puff at half that.',
+          large: 'The wake the moving moon leaves in the cloud.' },
+        { n: 'MOON_R', g: 'moon', min: 0.03, max: 0.4, step: 0.005,
+          what: 'The moon\u2019s radius, on the JavaScript side.',
+          small: 'The hit area (onMoon: \u00d71.3 for a mouse, \u00d71.7 for touch), the edge limits (moonBounds), the gust and puff sizes (moonGusts), and where mote moonlight starts.',
+          large: 'The shader has its own #define MOON_R that draws the disc, and the lab does not change it. Move this and the grab area and wake no longer match the moon you see. That is why the code says to keep the two in step: the Used-by list shows both.',
+          warn: 'Only the JS copy changes; the drawn disc stays 0.123.' },
+        { n: 'MOON_BREATH_LIFE', g: 'moon', min: 0.5, max: 60, step: 0.5,
+          what: 'Time constant of the breath that keeps clearing the moon\u2019s face after a tap (s).',
+          small: 'Copied into moonBreathLife at the next tap (bloom) or release (\u00d71 to \u00d71.5 for holds of up to 3 s); the frame decays moonBreath by e^(\u2212dt / moonBreathLife).',
+          large: 'How long a clearing keeps being blown open after you let go. Takes effect from your next tap or release.' },
+        { n: 'MOON_BREATH_GRIP', g: 'moon', min: 0, max: 0.6, step: 0.01,
+          what: 'How hard that lingering breath pushes at first.',
+          small: 'moonGusts adds a radial gust of strength MOON_BREATH_GRIP \u00d7 moonBreath (a held moon pushes 0.32).',
+          large: 'At 0 the clearing closes as soon as you let go.' },
+        { n: 'MOON_CLEAR_HOLD', g: 'moon', min: 1, max: 10, step: 0.1,
+          what: 'Cloud near the moon heals this many times more slowly.',
+          small: 'stepFlow sends (MOON_CLEAR_HOLD \u2212 1) \u00d7 moonAmount as uMoonZone.w to the cloud-map pass.',
+          large: 'Keeps a clearing around the moon while the wind slides the rest of the cloud past.' },
+        { n: 'MOON_CLEAR_REACH', g: 'moon', min: 0.05, max: 2, step: 0.01,
+          what: 'Reach of that slow-heal zone (full hold within 40% of it).',
+          small: 'Sent as uMoonZone.z; the map shader fades the hold out between 40% and 100% of it.',
+          large: 'Small: a tight halo. Large: half the sky heals slowly.' },
+
+        // --- ripples & flyers ---
+        { n: 'SHOCK_LIFE', g: 'events', min: 0.2, max: 8, step: 0.1,
+          what: 'Seconds a ripple ring lives (moon shocks: \u00d7 MOON_SHOCK_REACH).',
+          small: 'updateShocks drops a ring past it, moonShockFade eases over it, and updateParticles stops pushing dust after it.',
+          large: 'The ring\u2019s speed is fixed (0.82 units/s for the dust), so its life sets how far it travels.' },
+        { n: 'MOON_SHOCK_REACH', g: 'events', min: 1.05, max: 6, step: 0.05,
+          what: 'How much further and longer a moon tap\u2019s ripple travels; also widens its gust and puff.',
+          small: 'bloom() passes it as reach: life \u00d7 reach, gust and puff radius \u00d7 reach, impulse \u00d7 reach. A reach above 1 is also how the shader tells a moon shock (sent as a negative strength).',
+          large: 'The size of the event a moon tap makes. It must stay above 1, or a moon tap would draw as an ordinary ripple.' },
+        { n: 'FLY_EVERY[0]', find: ['FLY_EVERY'], g: 'events', min: 5, max: 600, step: 5,
+          what: 'Shortest gap between flyers, in scene seconds.',
+          small: 'updateFlyers schedules nextFlyAt = time + FLY_EVERY[0] + random \u00d7 (FLY_EVERY[1] \u2212 FLY_EVERY[0]).',
+          large: 'Takes effect when the next flyer is scheduled (press F to send one now). Scene time runs at 0.92\u00d7 real time.' },
+        { n: 'FLY_EVERY[1]', find: ['FLY_EVERY'], g: 'events', min: 5, max: 900, step: 5,
+          what: 'Longest gap between flyers, in scene seconds.',
+          small: 'The top of the random range above. Keep it at or above FLY_EVERY[0].',
+          large: 'Together with [0] it sets how rare the flyers feel.' },
+
+        // --- sky & touch timing ---
+        { n: 'SKY_WIND', g: 'timing', min: 0, max: 0.3, step: 0.002,
+          what: 'Speed at which the clouds, and every opening in them, drift sideways (units/s).',
+          small: 'frame adds dt \u00d7 SKY_WIND to drift, which the shader and the wind sim read as uDrift; stroke channels drift with it (updateStreams).',
+          large: 'At 0 the sky freezes. Faster wind slides openings off the moon, which is what MOON_CLEAR_HOLD fights.' },
+        { n: 'TAP_MS', g: 'timing', min: 100, max: 1000, step: 10,
+          what: 'Window in which a second touch tap makes a double-tap (ms).',
+          small: 'Checked in the pointerdown handler against the last tap.',
+          large: 'Touch only. Short windows make the brush flip hard to trigger; long ones make two quick blooms flip it by accident.' },
+        { n: 'TAP_BLOOM_MS', g: 'timing', min: 0, max: 1200, step: 10,
+          what: 'Delay before a single touch tap blooms (ms).',
+          small: 'release() holds the bloom in a setTimeout so a second tap can cancel it.',
+          large: 'Touch only. Below TAP_MS a double-tap blooms before it flips; much above it, taps feel laggy.' },
+
+        // --- structural ---
+        { n: 'MAX_PARTICLES', g: 'struct', ro: true,
+          what: 'Size of the dust pool, and the particle slider\u2019s ceiling.',
+          small: 'Sizes particleData (MAX_PARTICLES \u00d7 3 \u00d7 PARTICLE_FLOATS floats) and the particle GPU buffer.',
+          large: 'Raising it needs a reload; everything else follows the particles setting.' },
+        { n: 'MAX_MARKS', g: 'struct', ro: true,
+          what: 'How many recent marks the shader sees.',
+          small: 'addMark shifts the oldest off; uploadMarks fills uMarks.',
+          large: 'Must match uniform vec4 uMarks[512] in the shader. Note it does not limit the darkness itself, which lives in the mask.' },
+        { n: 'MAX_SHOCKS', g: 'struct', ro: true,
+          what: 'How many ripple rings can exist at once.',
+          small: 'Sizes shockData; addShock drops the oldest.', large: 'Must match uShocks[8] in the shader.' },
+        { n: 'MAX_LIGHTS', g: 'struct', ro: true,
+          what: 'How many light blooms can exist at once.',
+          small: 'Sizes lightData; addLight drops the oldest.', large: 'Must match uLights[24] in the main shader and the wind sim.' },
+        { n: 'MAX_ATTRACTORS', g: 'struct', ro: true,
+          what: 'How many light attractors pull on dust at once.',
+          small: 'addAttractor drops the oldest past it.', large: 'A plain cap, read at runtime; left read-only here.' },
+        { n: 'MAX_GUSTS', g: 'struct', ro: true,
+          what: 'How many gust splats reach the wind sim per frame.',
+          small: 'Sizes gustA and gustB; addGust drops the oldest.', large: 'Must match uSplatA[16] / uSplatB[16] in the sim shader.' },
+        { n: 'MASK_W', g: 'struct', ro: true,
+          what: 'Width of the 2D darkness mask (pixels).',
+          small: 'stampMask maps scene coordinates into it; uploadMask sends it to the GPU every frame.', large: 'Resolution of painted darkness in the void.' },
+        { n: 'MASK_H', g: 'struct', ro: true,
+          what: 'Height of the darkness mask (pixels).', small: 'See MASK_W.', large: 'See MASK_W.' },
+        { n: 'FLOW_W', g: 'struct', ro: true, live: true,
+          what: 'Current width of the wind grid (cells), derived from FLOW_LONG and the window shape.',
+          small: 'Set by flowDims() at startup and in stepFlow whenever the window or FLOW_LONG changes.', large: 'Watch it change when you move FLOW_LONG.' },
+        { n: 'FLOW_H', g: 'struct', ro: true, live: true,
+          what: 'Current height of the wind grid (cells).', small: 'See FLOW_W.', large: 'See FLOW_W.' },
+        { n: 'PARTICLE_FLOATS', g: 'struct', ro: true,
+          what: 'Floats per particle vertex: x, y, size, brightness, blur, moonlight.',
+          small: 'The stride uploadParticles writes and the vertex attributes read.', large: 'Changing it means changing the particle shader and its attributes too.' },
+        { n: 'MOTE_NEAR_SHARE', g: 'struct', ro: true,
+          what: 'Share of motes near enough to the eye to be soft, out-of-focus discs.',
+          small: 'Read once in initParticles to give each mote its depth.', large: 'Startup only: it takes effect after a reload.' },
+        { n: 'FLY_FIRST[0]', find: ['FLY_FIRST'], g: 'struct', ro: true,
+          what: 'Shortest wait before the first flyer (scene s).',
+          small: 'Read once when nextFlyAt is first set.', large: 'Startup only. To see a flyer now press F.' },
+        { n: 'FLY_FIRST[1]', find: ['FLY_FIRST'], g: 'struct', ro: true,
+          what: 'Longest wait before the first flyer (scene s).', small: 'See FLY_FIRST[0].', large: 'Startup only.' },
+
+        // --- shader constants ---
+        { n: 'STAR_KEEP_NEAR', g: 'shader', shader: true,
+          what: 'Share of grid cells that hold a near, flared star.',
+          small: 'stars() hashes each cell and keeps it when the hash is below this.', large: 'Star density of the bright layer.' },
+        { n: 'STAR_KEEP_FAR', g: 'shader', shader: true,
+          what: 'Share of cells that hold a far speck.', small: 'The far layers blend toward this.', large: 'Density of the faint star dust.' },
+        { n: 'STAR_BRIGHT', g: 'shader', shader: true,
+          what: 'Overall star brightness.', small: 'Multiplies every star\u2019s brightness.', large: 'How much the stars compete with the cloud.' },
+        { n: 'STAR_SHIMMER', g: 'shader', shader: true,
+          what: 'Idle twinkle depth of the stars.', small: 'depth = STAR_SHIMMER + STAR_SHIMMER_STIR \u00d7 excite.', large: 'Calm or restless sky.' },
+        { n: 'STAR_SHIMMER_STIR', g: 'shader', shader: true,
+          what: 'Extra twinkle when the air near a star is stirred.', small: 'Scaled by how excited the wind is there.', large: 'Stars answering your strokes.' },
+        { n: 'MOON_PHASE', g: 'shader', shader: true,
+          what: 'Sun angle from the viewer, in radians: about 27% lit, a crescent.',
+          small: 'The light vector L = (sin MOON_PHASE, 0, cos MOON_PHASE) shades the sphere.', large: 'Near 0 a full moon; near \u03c0 a new moon.' },
+        { n: 'MOON_TILT', g: 'shader', shader: true,
+          what: 'How far the crescent\u2019s horns lean.', small: 'Rotates the disc coordinates (and its glow) by this angle.', large: 'The moon\u2019s posture.' },
+        { n: 'MOON_BRIGHT', g: 'shader', shader: true,
+          what: 'Brightness of the sunlit surface.', small: 'Multiplies the lit albedo.', large: 'How much the moon blooms against the cloud.' },
+        { n: 'MOON_ASHEN', g: 'shader', shader: true,
+          what: 'Earthshine on the dark part of the disc.', small: 'A faint blue-grey fill on the unlit side.', large: 'Whether you can see the whole disc or only the crescent.' },
+        { n: 'MOON_LIGHT', g: 'shader', shader: true,
+          what: 'Colour of moonlight (a cool white).', small: 'Tints the disc, its glow, and the moonlit cloud edges.', large: 'The colour temperature of the whole moonlit scene.' },
+        { n: 'PINE_WIND', g: 'shader', shader: true,
+          what: 'Direction the pine tops lean in the wind (a unit vector).', small: 'The pine functions project positions onto it to bend branches.', large: 'Which way the wind seems to blow through the trees.' },
+        { n: 'PINE_PLANES', g: 'shader', shader: true,
+          what: 'Number of crossed planes each fine pine is built from.', small: 'Sizes the per-tree arrays and loops in the fine pine code.', large: 'More planes look fuller and cost more per pixel.' }
+      ];
+
+      var LAB_INDEX = {};
+      LAB_PARAMS.forEach(function (p) {
+        p.key = p.n;
+        p.find = p.find || [p.n];
+        LAB_INDEX[p.key] = p;
+      });
+
+      var lab = document.getElementById('lab');
+      var labBody = document.getElementById('labBody');
+      var labSearch = document.getElementById('labSearch');
+      var labPeriodSel = document.getElementById('labPeriod');
+      var labOut = document.getElementById('labOut');
+      var labBuilt = false;
+      var labSweep = null;
+      var labRefreshAt = 0;
+
+      // Reads (and, with v, writes) one of the constants above by name. They
+      // are plain closure variables in this function, so a direct eval here
+      // reaches them; only names in LAB_INDEX are accepted.
+      function labVar(key, v) {
+        var p = LAB_INDEX[key];
+        if (!p || p.tune || p.shader) return undefined;
+        if (arguments.length > 1) {
+          v = Number(v);
+          if (p.ro || !isFinite(v)) return undefined;
+          eval(key + ' = ' + v);
+        }
+        return eval(key);
+      }
+
+      function labGet(p) {
+        if (p.tune) return settings[p.n];
+        if (p.shader) return p.shaderVal;
+        return labVar(p.key);
+      }
+
+      function labDecimals(p) {
+        var s = String(p.step || 1);
+        return s.indexOf('.') < 0 ? 0 : s.length - s.indexOf('.') - 1;
+      }
+
+      function labFmt(p, v) {
+        if (typeof v !== 'number') return String(v);
+        return v.toFixed(labDecimals(p));
+      }
+
+      function labChanged(p, v) {
+        if (p.color) return String(v).toLowerCase() !== String(p.def).toLowerCase();
+        return typeof v === 'number' && Math.abs(v - p.def) > (p.step || 1e-6) * 0.5;
+      }
+
+      function labSet(p, v, fromSweep) {
+        if (p.ro || p.shader) return;
+        if (!fromSweep && labSweep && labSweep.p === p) labStopSweep();
+        if (p.color) {
+          var ci = document.getElementById(p.n);
+          ci.value = v;
+          ci.dispatchEvent(new Event('input', { bubbles: true }));
+          labShow(p);
+          return;
+        }
+        v = clamp(Number(v), p.min, p.max);
+        if (!isFinite(v)) return;
+        if (p.snap || !fromSweep) v = p.min + Math.round((v - p.min) / p.step) * p.step;
+        v = +v.toFixed(6);
+        if (p.tune) {
+          var input = document.getElementById(p.n);
+          input.value = String(v);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        } else {
+          labVar(p.key, v);
+        }
+        labShow(p);
+      }
+
+      // Put the current value into the card.
+      function labShow(p) {
+        var el = p.el;
+        if (!el) return;
+        var v = labGet(p);
+        el.val.textContent = p.color || p.ro || p.shader ? String(v) : labFmt(p, v);
+        if (el.range && document.activeElement !== el.range) el.range.value = String(v);
+        if (el.num && document.activeElement !== el.num) el.num.value = labFmt(p, v);
+        if (el.color && document.activeElement !== el.color) el.color.value = v;
+        if (!p.ro && !p.shader) el.card.classList.toggle('changed', labChanged(p, v));
+      }
+
+      function labStartSweep(p) {
+        labStopSweep();
+        var span = p.max - p.min;
+        labSweep = { p: p, u: span > 0 ? clamp((labGet(p) - p.min) / span, 0, 1) : 0, dir: 1 };
+        p.el.sweep.textContent = 'stop';
+        p.el.sweep.classList.add('on');
+        p.el.card.classList.add('sweeping');
+      }
+
+      function labStopSweep() {
+        if (!labSweep) return;
+        var el = labSweep.p.el;
+        el.sweep.textContent = 'sweep';
+        el.sweep.classList.remove('on');
+        el.card.classList.remove('sweeping');
+        labSweep = null;
+      }
+
+      // Called from frame() every frame. Sweeps run on the app's own clock.
+      function labTick(dt) {
+        if (!labBuilt) return;
+        if (labSweep) {
+          var s = labSweep;
+          var period = Number(labPeriodSel.value) || 6;
+          s.u += s.dir * dt * 2 / period;
+          if (s.u >= 1) { s.u = 2 - s.u; s.dir = -1; }
+          if (s.u <= 0) { s.u = -s.u; s.dir = 1; }
+          s.u = clamp(s.u, 0, 1);
+          labSet(s.p, s.p.min + (s.p.max - s.p.min) * s.u, true);
+        }
+        // Keep tune cards in step with the tune panel, and live values current.
+        labRefreshAt -= dt;
+        if (labRefreshAt <= 0 && document.body.classList.contains('labbing')) {
+          labRefreshAt = 0.3;
+          LAB_PARAMS.forEach(function (p) { if (p.tune || p.live) labShow(p); });
+        }
+      }
+
+      // --- Reading the source --------------------------------------------
+      // The page's own script text, one entry per line, each with the function
+      // (JS or GLSL) it sits in. Built once, the first time it is needed.
+      var labSrc = null;
+
+      function labBraces(s) {
+        s = s.replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|\/\/.*$/g, '');
+        var n = 0;
+        for (var i = 0; i < s.length; i++) {
+          if (s[i] === '{') n++;
+          else if (s[i] === '}') n--;
+        }
+        return n;
+      }
+
+      function labScan() {
+        if (labSrc) return labSrc;
+        var text = '';
+        for (var k = 0; k < document.scripts.length; k++) {
+          if (document.scripts[k].textContent.indexOf('fragmentSource') >= 0) text = document.scripts[k].textContent;
+        }
+        var lines = text.split('\n');
+        // File line of the script tag. The serialised DOM lacks the doctype
+        // line and the newline the parser drops between <html> and <head>.
+        var base = 0;
+        try {
+          var html = document.documentElement.outerHTML;
+          base = html.slice(0, html.indexOf('<scr' + 'ipt')).split('\n').length - 1 + 3;
+        } catch (e) { base = 0; }
+        var BEGIN = '// ---- lab' + ': begin', END = '// ---- lab' + ': end';
+        var TICK = String.fromCharCode(96);
+        var ctx = [];
+        var js = [], gs = [], dj = 0, dg = 0, shader = null;
+        var skipFrom = lines.length, skipTo = -1;
+        for (var i = 0; i < lines.length; i++) {
+          var L = lines[i];
+          if (L.indexOf(BEGIN) >= 0) skipFrom = i;
+          if (L.indexOf(END) >= 0) skipTo = i;
+          if (shader) {
+            var t = L.indexOf(TICK);
+            var body = t >= 0 ? L.slice(0, t) : L;
+            var gm = /^\s*(?:float|vec[234]|void|mat[234]|int|bool|ivec[234])\s+(\w+)\s*\([^;]*$/.exec(body);
+            if (gm) gs.push({ n: gm[1], d: dg });
+            ctx.push({ lang: 'GLSL', fn: gs.length ? gs[gs.length - 1].n + '()' : 'top level', src: shader });
+            dg += labBraces(body);
+            while (gs.length && dg <= gs[gs.length - 1].d) gs.pop();
+            if (t >= 0) { shader = null; gs.length = 0; dg = 0; }
+            continue;
+          }
+          var open = new RegExp('(\\w+)\\s*=\\s*(?:\\w+\\s*\\+\\s*)?' + TICK).exec(L);
+          var fm = /\bfunction\s+(\w+)\s*\(/.exec(L) || /(\w+\.prototype\.\w+)\s*=\s*function\b/.exec(L);
+          var ev = !fm && /addEventListener\('(\w+)',\s*function\b/.exec(L);
+          if (fm) js.push({ n: fm[1] + '()', d: dj });
+          else if (ev) js.push({ n: 'on ' + ev[1], d: dj });
+          ctx.push({ lang: 'JS', fn: js.length ? js[js.length - 1].n : 'top level', src: 'script' });
+          dj += labBraces(open ? L.slice(0, L.indexOf(TICK)) : L);
+          while (js.length && dj <= js[js.length - 1].d) js.pop();
+          if (open) { shader = open[1]; gs.length = 0; dg = 0; }
+        }
+        labSrc = { lines: lines, ctx: ctx, base: base, skipFrom: skipFrom, skipTo: skipTo };
+        return labSrc;
+      }
+
+      function labLineNo(i) {
+        var s = labScan();
+        return s.base ? s.base + i : i + 1;
+      }
+
+      function labEsc(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+
+      function labPattern(p) {
+        return new RegExp('(^|[^\\w.])(' + p.find.map(function (f) {
+          return f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }).join('|') + ')(?![\\w])', 'g');
+      }
+
+      function labMark(line, re) {
+        re.lastIndex = 0;
+        return labEsc(line).replace(re, '$1<mark class="lab-hit">$2</mark>');
+      }
+
+      var LAB_PLUMB = { 'syncTuneControls()': 1, 'tuneChanged()': 1, 'resetTune()': 1, 'saveTune()': 1, 'useWritePreset()': 1 };
+
+      // Where a parameter is declared and every line that reads it.
+      function labFind(p) {
+        if (p.found) return p.found;
+        var s = labScan();
+        var re = labPattern(p);
+        var declRe = p.tune ? /TUNE_DEFAULTS\s*=/
+          : new RegExp('^\\s*(?:var\\s+' + p.find[0] + '\\s*=|#define\\s+' + p.find[0] + '\\b|const\\s+\\w+\\s+' + p.find[0] + '\\s*=)');
+        var decl = null, uses = [];
+        for (var i = 0; i < s.lines.length; i++) {
+          if (i >= s.skipFrom && i <= s.skipTo) continue;
+          var L = s.lines[i];
+          if (!decl && declRe.test(L)) { decl = i; continue; }
+          // A name that appears only in a comment is not a use.
+          re.lastIndex = 0;
+          if (!re.test(L.replace(/\/\/.*$/, ''))) continue;
+          var c = s.ctx[i];
+          var plumb = p.tune && (LAB_PLUMB[c.fn] || c.fn === 'top level');
+          uses.push({ i: i, plumb: plumb });
+        }
+        uses.sort(function (a, b) { return (a.plumb ? 1 : 0) - (b.plumb ? 1 : 0) || a.i - b.i; });
+        p.found = { decl: decl, uses: uses, re: re };
+        if (p.shader && decl !== null) {
+          var dm = /#define\s+\w+\s+(\S+)/.exec(s.lines[decl]) || /=\s*([^;]+);/.exec(s.lines[decl]);
+          p.shaderVal = dm ? dm[1] : '?';
+        }
+        return p.found;
+      }
+
+      function labLoc(i) {
+        var c = labScan().ctx[i];
+        return '<span class="lab-loc">line <b>' + labLineNo(i) + '</b> \u00b7 ' + c.lang + ' \u00b7 <b>' + labEsc(c.fn) + '</b>'
+          + (c.lang === 'GLSL' ? ' in ' + labEsc(c.src) : '') + '</span>';
+      }
+
+      function labContext(i, re) {
+        var s = labScan();
+        var out = '';
+        for (var k = Math.max(0, i - 3); k <= Math.min(s.lines.length - 1, i + 3); k++) {
+          out += '<span class="lab-ctx' + (k === i ? ' at' : '') + '">' + String(labLineNo(k)).padStart(5, ' ') + '  '
+            + (k === i ? labMark(s.lines[k], re) : labEsc(s.lines[k])) + '</span>\n';
+        }
+        return out;
+      }
+
+      function labFillMore(p, box) {
+        var f = labFind(p);
+        var s = labScan();
+        var html = '<span class="lab-k">small scale</span><p class="lab-p">' + labEsc(p.small) + '</p>'
+          + '<span class="lab-k">large scale</span><p class="lab-p">' + labEsc(p.large) + '</p>'
+          + '<span class="lab-k">where it lives</span>';
+        if (p.tune) {
+          html += '<p class="lab-p">settings.' + labEsc(p.n) + ' in the settings object, defaulting from TUNE_DEFAULTS (below); its slider is <code>#' + labEsc(p.n) + '</code> in the tune panel\u2019s HTML.</p>';
+        }
+        if (f.decl !== null) {
+          html += '<div class="lab-code">' + labLoc(f.decl) + labMark(s.lines[f.decl].trim(), f.re) + '</div>';
+        } else {
+          html += '<p class="lab-p">(declaration not found)</p>';
+        }
+        html += '<span class="lab-k">used by \u00b7 ' + f.uses.length + ' line' + (f.uses.length === 1 ? '' : 's') + ' (click one for context)</span>';
+        var plumbStarted = false;
+        f.uses.forEach(function (u) {
+          if (u.plumb && !plumbStarted) {
+            plumbStarted = true;
+            html += '<span class="lab-k">plumbing: load, sync, save</span>';
+          }
+          html += '<div class="lab-code lab-use' + (u.plumb ? ' plumb' : '') + '" data-line="' + u.i + '">' + labLoc(u.i)
+            + labMark(s.lines[u.i].trim(), f.re) + '</div>';
+        });
+        box.innerHTML = html;
+      }
+
+      // --- Building the drawer -------------------------------------------
+      function labCard(p) {
+        var tag = p.ro ? 'read-only' : (p.shader ? 'GLSL' : (p.tune ? 'tune' : ''));
+        var h = '<div class="lab-top"><span class="lab-name">' + labEsc(p.n) + '</span>'
+          + (tag ? '<span class="lab-tag">' + tag + '</span>' : '')
+          + '<span class="lab-dot" title="changed from the file\u2019s value"></span><span class="lab-val"></span></div>';
+        if (p.color) {
+          h += '<div class="lab-ctl"><input type="color" data-act="color" aria-label="' + p.n + '"><span></span></div>'
+            + '<div class="lab-btns"><button type="button" data-act="def">default ' + labEsc(p.def) + '</button></div>';
+        } else if (!p.ro && !p.shader) {
+          h += '<div class="lab-ctl"><input type="range" data-act="range" min="' + p.min + '" max="' + p.max + '" step="' + (p.snap ? p.step : 'any') + '" aria-label="' + p.n + '">'
+            + '<input class="lab-num" type="number" data-act="num" min="' + p.min + '" max="' + p.max + '" step="' + p.step + '" aria-label="' + p.n + ' value"></div>'
+            + '<div class="lab-btns"><button type="button" data-act="min">min ' + labFmt(p, p.min) + '</button>'
+            + '<button type="button" data-act="def">default ' + labFmt(p, p.def) + '</button>'
+            + '<button type="button" data-act="max">max ' + labFmt(p, p.max) + '</button>'
+            + (p.noSweep ? '' : '<button type="button" data-act="sweep">sweep</button>') + '</div>';
+        }
+        h += '<p class="lab-what">' + labEsc(p.what) + '</p>'
+          + (p.warn ? '<p class="lab-warn">' + labEsc(p.warn) + '</p>' : '')
+          + '<details class="lab-more"><summary>small & large scale \u00b7 where it lives \u00b7 used by</summary><div class="lab-more-body"></div></details>';
+        return h;
+      }
+
+      function labBuild() {
+        if (labBuilt) return;
+        LAB_PARAMS.forEach(function (p) {
+          if (p.tune) {
+            var input = document.getElementById(p.n);
+            p.def = TUNE_DEFAULTS[p.n];
+            if (!p.color) {
+              p.min = Number(input.min); p.max = Number(input.max); p.step = Number(input.step);
+            }
+          } else if (p.shader) {
+            labFind(p);
+            p.def = p.shaderVal;
+          } else {
+            p.def = labVar(p.key);
+          }
+        });
+        var frag = document.createDocumentFragment();
+        var intro = document.createElement('p');
+        intro.className = 'lab-intro';
+        intro.textContent = 'Every value here is a live variable in VoidDrag.html. Change one and the next frame uses it. Constants go back to the file\u2019s values on reload; tune values save as usual. Open a card\u2019s details to see where it is declared and every line that reads it.';
+        frag.appendChild(intro);
+        LAB_GROUPS.forEach(function (g) {
+          var sec = document.createElement('details');
+          sec.className = 'lab-group';
+          sec.open = g.id !== 'struct' && g.id !== 'shader';
+          sec.dataset.group = g.id;
+          sec.innerHTML = '<summary>' + labEsc(g.title) + '</summary><p class="lab-gnote">' + labEsc(g.note) + '</p>';
+          LAB_PARAMS.forEach(function (p) {
+            if (p.g !== g.id) return;
+            var card = document.createElement('div');
+            card.className = 'lab-card';
+            card.dataset.key = p.key;
+            card.innerHTML = labCard(p);
+            p.el = {
+              card: card,
+              val: card.querySelector('.lab-val'),
+              range: card.querySelector('[data-act="range"]'),
+              num: card.querySelector('[data-act="num"]'),
+              color: card.querySelector('[data-act="color"]'),
+              sweep: card.querySelector('[data-act="sweep"]'),
+              more: card.querySelector('.lab-more-body')
+            };
+            p.text = (p.n + ' ' + p.what + ' ' + p.small + ' ' + p.large + ' ' + g.title).toLowerCase();
+            sec.appendChild(card);
+            labShow(p);
+          });
+          frag.appendChild(sec);
+        });
+        labBody.appendChild(frag);
+        labBuilt = true;
+      }
+
+      function labCardParam(t) {
+        var card = t.closest && t.closest('.lab-card');
+        return card ? LAB_INDEX[card.dataset.key] : null;
+      }
+
+      labBody.addEventListener('input', function (e) {
+        var p = labCardParam(e.target);
+        if (!p) return;
+        var act = e.target.dataset.act;
+        if (act === 'range') labSet(p, Number(e.target.value), false);
+        else if (act === 'color') labSet(p, e.target.value, false);
+      });
+      labBody.addEventListener('change', function (e) {
+        var p = labCardParam(e.target);
+        if (p && e.target.dataset.act === 'num' && e.target.value !== '') labSet(p, Number(e.target.value), false);
+      });
+      labBody.addEventListener('click', function (e) {
+        var t = e.target;
+        var use = t.closest && t.closest('.lab-use');
+        if (use) {
+          var next = use.nextElementSibling;
+          if (next && next.classList.contains('lab-ctxbox')) { next.remove(); return; }
+          var p0 = labCardParam(use);
+          var box = document.createElement('div');
+          box.className = 'lab-code lab-ctxbox';
+          box.innerHTML = labContext(Number(use.dataset.line), p0.found.re);
+          use.after(box);
+          return;
+        }
+        var act = t.dataset && t.dataset.act;
+        var p = labCardParam(t);
+        if (!p || !act || t.tagName !== 'BUTTON') return;
+        if (act === 'min') labSet(p, p.min, false);
+        else if (act === 'max') labSet(p, p.max, false);
+        else if (act === 'def') labSet(p, p.def, false);
+        else if (act === 'sweep') { if (labSweep && labSweep.p === p) labStopSweep(); else labStartSweep(p); }
+      });
+      // Details are filled the first time they open (toggle does not bubble).
+      labBody.addEventListener('toggle', function (e) {
+        var d = e.target;
+        if (!d.classList || !d.classList.contains('lab-more') || !d.open) return;
+        var p = labCardParam(d);
+        var box = d.querySelector('.lab-more-body');
+        if (p && box && !box.firstChild) labFillMore(p, box);
+      }, true);
+
+      labSearch.addEventListener('input', function () {
+        var q = labSearch.value.trim().toLowerCase();
+        LAB_GROUPS.forEach(function (g) {
+          var sec = labBody.querySelector('[data-group="' + g.id + '"]');
+          var any = false;
+          LAB_PARAMS.forEach(function (p) {
+            if (p.g !== g.id) return;
+            var hit = !q || p.text.indexOf(q) >= 0;
+            p.el.card.hidden = !hit;
+            if (hit) any = true;
+          });
+          sec.hidden = !any;
+          if (q && any) sec.open = true;
+        });
+      });
+
+      document.getElementById('labReset').addEventListener('click', function () {
+        labStopSweep();
+        LAB_PARAMS.forEach(function (p) {
+          if (!p.tune && !p.ro && !p.shader && labChanged(p, labGet(p))) labSet(p, p.def, false);
+        });
+        labOut.hidden = true;
+      });
+
+      document.getElementById('labCopy').addEventListener('click', function () {
+        var out = [];
+        LAB_PARAMS.forEach(function (p) {
+          if (p.ro || p.shader) return;
+          var v = labGet(p);
+          if (!labChanged(p, v)) return;
+          if (p.tune) {
+            out.push('// tune (already saved): ' + p.n + ' = ' + (p.color ? v : labFmt(p, v)) + '   (default ' + p.def + ')');
+            return;
+          }
+          var f = labFind(p);
+          var where = f.decl !== null ? ' (line ' + labLineNo(f.decl) + ')' : '';
+          var val = +Number(v).toFixed(4);
+          if (p.key.indexOf('[') >= 0) out.push(p.key + ' = ' + val + ';   // was ' + p.def + ': edit the array literal' + where);
+          else out.push('var ' + p.key + ' = ' + val + ';   // was ' + p.def + where);
+        });
+        var text = out.length ? out.join('\n') : '// nothing changed from the file\u2019s values';
+        labOut.value = text;
+        labOut.hidden = false;
+        labOut.select();
+        try { if (navigator.clipboard) navigator.clipboard.writeText(text).catch(function () {}); } catch (e) { /* the box below still has it */ }
+      });
+
+      document.getElementById('labClose').addEventListener('click', function () { setLabOpen(false); });
+
+      function setLabOpen(open) {
+        if (open) labBuild();
+        document.body.classList.toggle('labbing', open);
+        lab.setAttribute('aria-hidden', open ? 'false' : 'true');
+        if (open) labRefreshAt = 0;
+      }
+
+      if (/[?&]lab\b/.test(location.search)) setLabOpen(true);
+      // ---- lab: end ----
     })();
   </script>
 </body>
