@@ -1,0 +1,7 @@
+var MOTE_BRIGHT = 0.1;   // was 0.16 (line 4083)
+var MOTE_MOON = 0.7;   // was 1.45 (line 4084)
+var MOTE_MOON_REACH = 0.32;   // was 0.48 (line 4085)
+var MOTE_GLINT = 0.3;   // was 2.2 (line 4086)
+var MOTE_WIND = 0.055;   // was 0.205 (line 4087)
+var MOTE_CARRY = 0.32;   // was 0.4 (line 4088)
+var TUNE_DEFAULTS = { brush: 1.40, trail: 8.0, particles: 1200, velocity: 0.60, veil: 1.00, ink0: '#4a4848', ink1: '#9b958b', ink2: '#e6dccd', curve: 0.00, pace: 1.00 };   // brush was 0.90, trail was 5.8, velocity was 0.30, veil was 0.50, pace was 1.60, curve was 1.00 (line 850)

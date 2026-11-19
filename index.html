@@ -708,14 +708,14 @@
 
   <section class="panel" id="panel" aria-hidden="true" aria-label="tune the field">
     <div class="panel-head"><span>tune</span><button class="panel-close" id="panelClose" type="button" aria-label="close tuning">&times;</button></div>
-    <label class="control" title="How wide the brush is."><span>brush</span><input id="brush" type="range" min="0.4" max="1.4" step="0.05" value="0.90"><output id="brushOut">0.90</output></label>
-    <label class="control" title="How long a mark persists. Raise it to write a whole word."><span>trail</span><input id="trail" type="range" min="0.3" max="8" step="0.1" value="5.8"><output id="trailOut">5.8</output></label>
+    <label class="control" title="How wide the brush is."><span>brush</span><input id="brush" type="range" min="0.4" max="1.4" step="0.05" value="1.40"><output id="brushOut">1.40</output></label>
+    <label class="control" title="How long a mark persists. Raise it to write a whole word."><span>trail</span><input id="trail" type="range" min="0.3" max="8" step="0.1" value="8.0"><output id="trailOut">8.0</output></label>
     <label class="control" title="How many dust motes are active."><span>particles</span><input id="particles" type="range" min="150" max="1200" step="50" value="1200"><output id="particlesOut">1200</output></label>
-    <label class="control" title="How strongly strokes move the dust."><span>velocity</span><input id="velocity" type="range" min="0" max="2.5" step="0.05" value="0.30"><output id="velocityOut">0.30</output></label>
-    <label class="control" title="Brightness of the living veil."><span>veil</span><input id="veil" type="range" min="0.3" max="1.6" step="0.05" value="0.50"><output id="veilOut">0.50</output></label>
-    <label class="control" title="How fast the pines pass on the ride."><span>pace</span><input id="pace" type="range" min="0.2" max="2.5" step="0.05" value="1.60"><output id="paceOut">1.60</output></label>
+    <label class="control" title="How strongly strokes move the dust."><span>velocity</span><input id="velocity" type="range" min="0" max="2.5" step="0.05" value="0.60"><output id="velocityOut">0.60</output></label>
+    <label class="control" title="Brightness of the living veil."><span>veil</span><input id="veil" type="range" min="0.3" max="1.6" step="0.05" value="1.00"><output id="veilOut">1.00</output></label>
+    <label class="control" title="How fast the pines pass on the ride."><span>pace</span><input id="pace" type="range" min="0.2" max="2.5" step="0.05" value="1.00"><output id="paceOut">1.00</output></label>
     <div class="ink-row" title="Three color stops for the veil, illumination and particles."><span>ink</span><input id="ink0" type="color" value="#4a4848" aria-label="ink low" title="low ink"><input id="ink1" type="color" value="#9b958b" aria-label="ink mid" title="mid ink"><input id="ink2" type="color" value="#e6dccd" aria-label="ink high" title="high ink"><span class="ink-preview" id="inkPreview"></span></div>
-    <label class="control" title="Bias the ink ramp toward the low or high stops."><span>curve</span><input id="curve" type="range" min="-1" max="1" step="0.05" value="1.00"><output id="curveOut">1.00</output></label>
+    <label class="control" title="Bias the ink ramp toward the low or high stops."><span>curve</span><input id="curve" type="range" min="-1" max="1" step="0.05" value="0.00"><output id="curveOut">0.00</output></label>
     <div class="panel-actions"><button id="pines" type="button" aria-pressed="true" title="pine style: fine needles or the classic silhouette (P)">pines &middot; fine</button><button id="cursor" type="button" aria-pressed="true" title="cursor: the slow moon in the sky, or the classic pearl (B)">cursor &middot; moon</button><button id="labOpen" type="button" title="the lab: every parameter, live, and where it lives in the code (L)">lab</button></div>
     <div class="panel-actions"><button id="still"type="button" title="clear the field">still</button><button id="write" type="button" title="smaller brush, longer trail">write</button><button id="reset" type="button">reset</button></div>
     <p class="panel-hint">left &middot; part &nbsp; right &middot; light</p>
@@ -847,7 +847,7 @@
       var writeButton = document.getElementById('write');
       var resetButton = document.getElementById('reset');
 
-      var TUNE_DEFAULTS = { brush: 0.90, trail: 5.8, particles: 1200, velocity: 0.30, veil: 0.50, ink0: '#4a4848', ink1: '#9b958b', ink2: '#e6dccd', curve: 1.00, pace: 1.60 };
+      var TUNE_DEFAULTS = { brush: 1.40, trail: 8.0, particles: 1200, velocity: 0.60, veil: 1.00, ink0: '#4a4848', ink1: '#9b958b', ink2: '#e6dccd', curve: 0.00, pace: 1.00 };
       var settings = {
         brush: TUNE_DEFAULTS.brush,
         trail: TUNE_DEFAULTS.trail,
@@ -4080,12 +4080,12 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       // the brush's gusts for a moment after the finger has passed, the moon's
       // passage and its held breath. They shimmer as they turn, flakes now and
       // then catch a glint, and seen near the moon they light up silver.
-      var MOTE_BRIGHT = 0.16;       // brightness of a resting mote
-      var MOTE_MOON = 1.45;         // extra light on motes seen near the moon
-      var MOTE_MOON_REACH = 0.48;   // scene units past the disc over which that falls off
-      var MOTE_GLINT = 2.2;        // brightness of a flake's brief glint
-      var MOTE_WIND = 0.205;        // drift of the farthest motes, units/s; the nearest go ~4x as fast
-      var MOTE_CARRY = 0.4;        // share of a gust's speed the dust picks up
+      var MOTE_BRIGHT = 0.1;       // brightness of a resting mote
+      var MOTE_MOON = 0.7;         // extra light on motes seen near the moon
+      var MOTE_MOON_REACH = 0.32;   // scene units past the disc over which that falls off
+      var MOTE_GLINT = 0.3;        // brightness of a flake's brief glint
+      var MOTE_WIND = 0.055;        // drift of the farthest motes, units/s; the nearest go ~4x as fast
+      var MOTE_CARRY = 0.32;        // share of a gust's speed the dust picks up
       var puffs = [];               // the air a gust leaves moving, felt by the dust
       var MAX_PUFFS = 40;
       var PUFF_LIFE = 2.2;
