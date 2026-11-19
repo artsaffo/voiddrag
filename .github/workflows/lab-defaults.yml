@@ -1,0 +1,81 @@
+# Values sent from the VoidDrag lab ("send to web") arrive as an issue titled
+# "Lab defaults: ...", with the lab's lines in a code block. When the
+# repository owner files one, this applies them to index.html with the same
+# tools/apply-defaults.ps1 the PC uses, keeps a copy in lab-defaults/ (the PC
+# tool pulls those back into VoidDrag.html), comments with what changed and
+# closes the issue. Issues from anyone else are not touched.
+name: Lab defaults
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+
+concurrency:
+  group: lab-defaults
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.event.issue.user.login == github.repository_owner && startsWith(github.event.issue.title, 'Lab defaults')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply the values
+        shell: pwsh
+        env:
+          # Passed as environment variables, never pasted into the script.
+          BODY: ${{ github.event.issue.body }}
+          NUMBER: ${{ github.event.issue.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $fence = '`' * 3
+          $m = [regex]::Match($env:BODY, '(?s)' + $fence + '[a-z]*\r?\n(.*?)' + $fence)
+          $text = if ($m.Success) { $m.Groups[1].Value } else { $env:BODY }
+          $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+          New-Item -ItemType Directory -Force lab-defaults | Out-Null
+          $name = "lab-defaults/$stamp-issue$env:NUMBER.txt"
+          [IO.File]::WriteAllText($name, $text.Trim() + "`n")
+
+          $log = ''
+          $ok = $true
+          try {
+            $log = & ./tools/apply-defaults.ps1 -File $name -Target index.html -Yes *>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) { $ok = $false }
+          } catch {
+            $ok = $false
+            $log += "`n$_"
+          }
+
+          git diff --quiet -- index.html
+          $changed = ($LASTEXITCODE -ne 0)
+          if ($ok -and $changed) {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898273+github-actions[bot]@users.noreply.github.com'
+            git add index.html $name
+            git commit -q -m "New defaults from the lab (issue #$env:NUMBER)"
+            git push -q origin HEAD
+            if ($LASTEXITCODE -ne 0) { $ok = $false; $log += "`ngit push failed." }
+            # Make sure Pages rebuilds even if a bot push does not trigger it.
+            gh api -X POST "repos/$env:GITHUB_REPOSITORY/pages/builds" --silent 2>$null
+          } else {
+            Remove-Item $name
+          }
+
+          if ($ok -and $changed) {
+            $head = "Applied to the web build (GitHub Pages updates within a minute or two). On the PC, run tools\apply-defaults.cmd to bring these values into VoidDrag.html and the phone app."
+          } elseif ($ok) {
+            $head = "Nothing changed: these values are already the defaults."
+          } else {
+            $head = "Not applied. Nothing was changed. The script said:"
+          }
+          $body = $head + "`n`n" + $fence + "`n" + $log.Trim() + "`n" + $fence + "`n"
+          [IO.File]::WriteAllText("comment.md", $body)
+          gh issue comment $env:NUMBER --body-file comment.md
+          if ($ok) { gh issue close $env:NUMBER }
+          if (-not $ok) { exit 1 }

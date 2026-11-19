@@ -716,7 +716,7 @@
     <label class="control" title="How fast the pines pass on the ride."><span>pace</span><input id="pace" type="range" min="0.2" max="2.5" step="0.05" value="1.00"><output id="paceOut">1.00</output></label>
     <div class="ink-row" title="Three color stops for the veil, illumination and particles."><span>ink</span><input id="ink0" type="color" value="#4a4848" aria-label="ink low" title="low ink"><input id="ink1" type="color" value="#9b958b" aria-label="ink mid" title="mid ink"><input id="ink2" type="color" value="#e6dccd" aria-label="ink high" title="high ink"><span class="ink-preview" id="inkPreview"></span></div>
     <label class="control" title="Bias the ink ramp toward the low or high stops."><span>curve</span><input id="curve" type="range" min="-1" max="1" step="0.05" value="0.00"><output id="curveOut">0.00</output></label>
-    <div class="panel-actions"><button id="pines" type="button" aria-pressed="true" title="pine style: fine needles or the classic silhouette (P)">pines &middot; fine</button><button id="cursor" type="button" aria-pressed="true" title="cursor: the slow moon in the sky, or the classic pearl (B)">cursor &middot; moon</button></div>
+    <div class="panel-actions"><button id="pines" type="button" aria-pressed="true" title="pine style: fine needles or the classic silhouette (P)">pines &middot; fine</button><button id="cursor" type="button" aria-pressed="true" title="cursor: the slow moon in the sky, or the classic pearl (B)">cursor &middot; moon</button><button id="labOpen" type="button" title="the lab: every parameter, live, and where it lives in the code (L)">lab</button></div>
     <div class="panel-actions"><button id="still"type="button" title="clear the field">still</button><button id="write" type="button" title="smaller brush, longer trail">write</button><button id="reset" type="button">reset</button></div>
     <p class="panel-hint">left &middot; part &nbsp; right &middot; light</p>
     <p class="panel-note">T tune &middot; C still &middot; M mood &middot; S sound &middot; R ride &middot; P pines &middot; K sky &middot; B cursor &middot; L lab</p>
@@ -735,6 +735,7 @@
     <div class="lab-foot">
       <button id="labReset" type="button" title="Put every constant back to its value in the file (tune values have their own reset).">reset constants</button>
       <button id="labCopy" type="button" title="Copy the changed values as code you can paste into VoidDrag.html.">copy changes</button>
+      <button id="labSend" type="button" title="Open a GitHub issue with the changed values. When the repository owner files it, the web build takes them as its defaults.">send to web</button>
     </div>
     <textarea class="lab-out" id="labOut" readonly aria-label="changed values" hidden></textarea>
   </section>
@@ -6171,14 +6172,21 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         labOut.hidden = true;
       });
 
-      document.getElementById('labCopy').addEventListener('click', function () {
+      // The changed values as lines of code for the file. Each line is valid
+      // code: paste it over the line it names, or hand all of them to
+      // tools\apply-defaults (by clipboard, or through a GitHub issue), which
+      // finds each declaration by name and writes the new value in.
+      function labChanges() {
         var out = [];
+        var summary = [];
+        var tuneWas = [];
         LAB_PARAMS.forEach(function (p) {
           if (p.ro || p.shader) return;
           var v = labGet(p);
           if (!labChanged(p, v)) return;
+          summary.push(p.key + ' ' + (p.color ? v : labFmt(p, v)));
           if (p.tune) {
-            out.push('// tune (already saved): ' + p.n + ' = ' + (p.color ? v : labFmt(p, v)) + '   (default ' + p.def + ')');
+            tuneWas.push(p.n + ' was ' + (p.color ? p.def : labFmt(p, p.def)));
             return;
           }
           var f = labFind(p);
@@ -6187,11 +6195,60 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           if (p.key.indexOf('[') >= 0) out.push(p.key + ' = ' + val + ';   // was ' + p.def + ': edit the array literal' + where);
           else out.push('var ' + p.key + ' = ' + val + ';   // was ' + p.def + where);
         });
-        var text = out.length ? out.join('\n') : '// nothing changed from the file\u2019s values';
+        if (tuneWas.length) {
+          // The whole TUNE_DEFAULTS line, in the file's own key order and style.
+          var parts = Object.keys(TUNE_DEFAULTS).map(function (k) {
+            var tp = LAB_INDEX[k];
+            var tv = settings[k];
+            return k + ': ' + (typeof tv === 'string' ? "'" + tv + "'" : (tp ? labFmt(tp, tv) : String(tv)));
+          });
+          var tf = labFind(LAB_INDEX.brush);
+          out.push('var TUNE_DEFAULTS = { ' + parts.join(', ') + ' };   // ' + tuneWas.join(', ')
+            + (tf.decl !== null ? ' (line ' + labLineNo(tf.decl) + ')' : ''));
+        }
+        return { lines: out, summary: summary };
+      }
+
+      function labShowOut(text) {
         labOut.value = text;
         labOut.hidden = false;
         labOut.select();
+      }
+
+      document.getElementById('labCopy').addEventListener('click', function () {
+        var c = labChanges();
+        var text = c.lines.length
+          ? '// VoidDrag lab: changed values. To make them the defaults, copy this and run tools\\apply-defaults.cmd\n' + c.lines.join('\n')
+          : '// nothing changed from the file\u2019s values';
+        labShowOut(text);
         try { if (navigator.clipboard) navigator.clipboard.writeText(text).catch(function () {}); } catch (e) { /* the box below still has it */ }
+      });
+
+      // "send to web": opens a new GitHub issue in the site's repository with
+      // the lines filled in. A GitHub Action there applies them to the web
+      // build when the repository owner files it (anyone else's issue is
+      // left alone), and tools\apply-defaults brings them back into
+      // VoidDrag.html and the phone app on the PC. In the Android app the
+      // link opens in the phone's browser (see MainActivity).
+      var LAB_REPO = 'artsaffo/voiddrag';
+      document.getElementById('labSend').addEventListener('click', function () {
+        var c = labChanges();
+        if (!c.lines.length) { labShowOut('// nothing changed from the file\u2019s values, so there is nothing to send'); return; }
+        var title = 'Lab defaults: ' + c.summary.join(', ');
+        if (title.length > 120) title = title.slice(0, 117) + '...';
+        var fence = String.fromCharCode(96, 96, 96);
+        var body = 'Sent from the VoidDrag lab. When the repository owner files this issue, a GitHub Action makes these values the web build\u2019s defaults, comments with what changed, and closes it. Issues from anyone else are left alone.\n\n'
+          + 'On the PC, tools\\apply-defaults.cmd then brings them into VoidDrag.html and can install them on the phone.\n\n'
+          + fence + 'js\n' + c.lines.join('\n') + '\n' + fence + '\n';
+        var url = 'https://github.com/' + LAB_REPO + '/issues/new?title=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(body);
+        labShowOut('// opening GitHub with these lines; press "Submit new issue" there\n' + c.lines.join('\n'));
+        var w = window.open(url, '_blank');
+        if (w) { try { w.opener = null; } catch (e) { /* cross-origin */ } }
+      });
+
+      document.getElementById('labOpen').addEventListener('click', function () {
+        setTuneOpen(false);
+        setLabOpen(true);
       });
 
       document.getElementById('labClose').addEventListener('click', function () { setLabOpen(false); });
