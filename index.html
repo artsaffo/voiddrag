@@ -623,6 +623,7 @@
     }
     .shot.show { opacity: 1; transform: translate(-50%, 0); }
     .shot.hit { color: var(--ink); border-color: rgba(255, 226, 184, 0.4); box-shadow: 0 0 26px rgba(255, 214, 158, 0.14); }
+    .shot.creepy { color: #ffb4a6; border-color: rgba(255, 80, 60, 0.45); box-shadow: 0 0 26px rgba(255, 40, 20, 0.18); }
     .shot b { font-weight: 600; letter-spacing: 0.14em; }
     .shot .stars { color: #ffdfa6; letter-spacing: 0.06em; }
 
@@ -1025,6 +1026,16 @@
       var QUARRY_KINDS = ['double', 'ruby', 'sapphire', 'pulsing', 'cluster'];
       var shotPending = false;
       var probeTarget = null;
+      var SHUTTER_COOLDOWN = 0.75;  // s between pictures
+      var FLOURISH_LEN = 8.0;       // scene s a photographed star's flourish plays; keep in step with quarryStars (age < 8)
+      var SAUCER_CHANCE = 0.10;     // chance a picture of the moon brings the visitor
+      var lastShutterAt = -1e9;
+      var saucer = null;            // the visitor's one orbit of the moon, while it lasts
+      var saucerData = new Float32Array(4);
+      var saucerDataB = new Float32Array(4);
+      var CRITTER_KINDS = ['squirrel', 'nest', 'bird'];
+      var flashAt = -1e9;           // scene time the flash last fired
+      var critterGlint = null;      // the creature last photographed: { cell, code, at, red }
       var inkPreview = document.getElementById('inkPreview');
       var brushOut = document.getElementById('brushOut');
       var trailOut = document.getElementById('trailOut');
@@ -1150,6 +1161,23 @@ uniform vec3 uProbe;
 // (negative: not yet), y how strong that flourish is.
 uniform vec4 uQuarry[6];
 uniform vec4 uQuarryB[6];
+// A rare visitor at the moon: a little flying saucer on one orbit.
+// uSaucer: xy position in scene units, z depth (+ in front of the moon,
+// - behind it), w opacity (0 = none). uSaucerB: x bank angle, y half-width
+// in scene units, z its own clock for the rim lights.
+uniform vec4 uSaucer;
+uniform vec4 uSaucerB;
+// Creatures in the pines (squirrels, nests, birds). uGlint: the one just
+// photographed: x its tree's cell mod 256, y its lane code (lane + 3 on the
+// right), z seconds since (negative: none), w 1 if its eyes are red.
+// uFlash: seconds since the camera's flash last fired.
+uniform vec4 uGlint;
+uniform float uFlash;
+// The probe's look into the trees: the creature nearest the probe point.
+// x: distance from its body, y: tree cell mod 256, z: lane code, w: kind + 4 * red.
+vec4 gCritter = vec4(1e3, 0.0, 0.0, 0.0);
+// Light from creatures' eyes, added over the canopy.
+vec3 gEyes = vec3(0.0);
 // How much clear sky skyScene() found at this pixel (1 = none in the way).
 float gClear = 0.0;
 
@@ -1614,6 +1642,85 @@ vec4 fallingNeedles(vec2 p, vec2 ext, float lit, float t) {
   return vec4(c, cover);
 }
 
+// ---------------------------------------------------------------------------
+// Creatures in the pines: now and then a tree holds a squirrel, a nest or a
+// bird, a dark shape among the needles. The camera's flash catches their
+// eyes; now and then a creepy one's eyes shine red.
+#define CRITTER_SHARE 0.42   // share of trees with a creature
+#define CRITTER_RED 0.14     // share of creatures whose eyes shine red
+
+float cEll(vec2 p, vec2 c, vec2 r, float pu) {
+  float d = length((p - c) / r) - 1.0;
+  float aa = pu / min(r.x, r.y);
+  return 1.0 - smoothstep(-aa, aa, d);
+}
+
+// One eye's answer to the flash: a hard point, a soft halo and a little cross.
+void eyeLight(vec2 p, vec2 e, float g, float red) {
+  if (g <= 0.0) return;
+  vec2 r = p - e;
+  float r2 = dot(r, r);
+  vec3 ec = red > 0.5 ? vec3(1.0, 0.09, 0.04) : vec3(1.0, 0.97, 0.90);
+  float core = exp(-r2 / 0.0055);
+  float halo = exp(-sqrt(r2) / 0.16) * 0.20;
+  float spikes = (exp(-abs(r.x) * 34.0 - abs(r.y) * 2.6) + exp(-abs(r.y) * 34.0 - abs(r.x) * 2.6)) * 0.12;
+  gEyes += ec * (core * 1.6 + halo + spikes) * g;
+}
+
+// p: the creature's own frame (x forward, y up, 1 = its size); pu: one screen
+// pixel in those units; kind 0 squirrel, 1 nest, 2 bird; g: how hard its eyes
+// shine. rgb: colour, a: coverage.
+vec4 critter(vec2 p, float pu, float kind, float red, float g, float lit) {
+  float cov = 0.0;
+  float eyeW = 0.0;
+  // Warm grey fur and feathers, a shade lighter than the needles, lighter on
+  // top where the sky reaches.
+  vec3 col = vec3(0.022, 0.017, 0.0125) * (0.60 + 0.65 * smoothstep(-0.9, 1.1, p.y));
+  if (kind < 0.5) {
+    // A squirrel on a branch, its tail a plume up its back, curling over.
+    float fuzz = (vnoise(p * 9.0) - 0.5) * 0.18;
+    cov = max(cov, cEll(p, vec2(0.0, -0.15), vec2(0.50, 0.62), pu));
+    cov = max(cov, cEll(p, vec2(0.42, 0.52), vec2(0.34, 0.30), pu));
+    cov = max(cov, cEll(p, vec2(0.30, 0.86), vec2(0.07, 0.16), pu));
+    cov = max(cov, cEll(p, vec2(0.22, -0.72), vec2(0.30, 0.12), pu));
+    cov = max(cov, cEll(p, vec2(-0.62, 0.30), vec2(0.40 + fuzz, 0.95 + fuzz), pu));
+    cov = max(cov, cEll(p, vec2(-0.30, 1.12), vec2(0.42 + fuzz, 0.26 + fuzz * 0.5), pu));
+    vec2 e = vec2(0.53, 0.58);
+    eyeW = cEll(p, e, vec2(0.065), pu);
+    eyeLight(p, e, g, red);
+    cov = max(cov, smoothstep(pu, -pu, abs(p.y + 0.86) - 0.08) * step(abs(p.x), 1.6));
+  } else if (kind < 1.5) {
+    // A nest: a ragged bowl of twigs, and something in it peering over the rim.
+    float fuzz = (vnoise(p * 12.0) - 0.5) * 0.22;
+    float bowl = cEll(p, vec2(0.0, -0.28), vec2(1.05 + fuzz, 0.50 + fuzz), pu)
+               * smoothstep(0.06 + pu, 0.06 - pu, p.y - fuzz * 0.4);
+    float head = cEll(p, vec2(0.04, 0.10), vec2(0.36, 0.28), pu);
+    cov = max(bowl, head);
+    col *= mix(1.0, 0.75 + 0.6 * vnoise(p * vec2(26.0, 9.0)), bowl);
+    vec2 e1 = vec2(-0.09, 0.14);
+    vec2 e2 = vec2(0.17, 0.14);
+    eyeW = max(cEll(p, e1, vec2(0.055), pu), cEll(p, e2, vec2(0.055), pu));
+    eyeLight(p, e1, g, red);
+    eyeLight(p, e2, g, red);
+    cov = max(cov, smoothstep(pu, -pu, abs(p.y + 0.80) - 0.07) * step(abs(p.x), 1.5));
+  } else {
+    // A small bird, fluffed up on a twig.
+    vec2 bp = rot(0.25) * p;
+    cov = max(cov, cEll(bp, vec2(0.0), vec2(0.55, 0.40), pu));
+    cov = max(cov, cEll(p, vec2(0.42, 0.36), vec2(0.27, 0.25), pu));
+    cov = max(cov, cEll(p, vec2(0.72, 0.32), vec2(0.16, 0.05), pu));
+    cov = max(cov, cEll(rot(-0.5) * (p - vec2(-0.62, -0.22)), vec2(0.0), vec2(0.40, 0.09), pu));
+    vec2 e = vec2(0.50, 0.42);
+    eyeW = cEll(p, e, vec2(0.06), pu);
+    eyeLight(p, e, g, red);
+    cov = max(cov, smoothstep(pu, -pu, abs(p.y + 0.52) - 0.06) * step(abs(p.x), 1.3));
+  }
+  col += vec3(0.010, 0.008, 0.006) * lit;
+  // The whites of the eyes: faint until the flash finds them.
+  col = mix(col, vec3(0.085, 0.082, 0.076), eyeW);
+  return vec4(col, cov);
+}
+
 // The ride: three lanes of pines on each side of the path. A tip only ever
 // slides straight down the view; shorter, nearer trees sit further out and
 // pass faster, which is all the parallax there is.
@@ -1651,18 +1758,63 @@ vec4 canopy(vec2 p, float lit) {
       if (ty > ext.y + 0.30) break;
       vec2 tip = vec2(lane * (0.86 + 0.28 * hh.x), ty);
       float sz = size * (0.80 + 0.40 * hh.y);
+      vec2 td = normalize(tip);
+      float tt = uTime + fl * 11.0 + hh.y * 5.0;
+
+      // This tree's creature, if it has one: on a branch partway down from
+      // the tip, swaying with the tree.
+      vec4 cr = vec4(0.0);
+      float ch = hash21(vec2(c * 1.37 + fl * 7.1, side * 3.3 + 11.0));
+      if (ch < CRITTER_SHARE) {
+        float u = ch / CRITTER_SHARE;
+        float kind = floor(fract(u * 17.31) * 3.0);
+        float red = step(fract(u * 93.7), CRITTER_RED);
+        float sc = sz * (0.12 + 0.22 * fract(u * 41.3));
+        float bodyAt = sz * (0.150 * (1.0 - exp(-sc * 5.0 / sz)) + 0.045 * sc);
+        float csz = 0.024 * sz * (kind > 1.5 ? 0.8 : 1.0);
+        vec2 perp = vec2(-td.y, td.x);
+        vec2 c0p = tip + td * sc + perp * (fract(u * 61.9) - 0.5) * 1.1 * bodyAt;
+        vec2 cd0 = mp - c0p;
+        bool probing = uProbe.z > 0.5;
+        if (probing || dot(cd0, cd0) < pow(2.2 * csz + 0.06 * sz, 2.0)) {
+          vec2 crk = pineRock(hh.x, sz, tt);
+          vec2 cd = cd0 - perp * crk.x * exp(-sc * 1.4 / sz);
+          float code = fl + (side > 0.0 ? 3.0 : 0.0);
+          float cmod = mod(c, 256.0);
+          if (probing) {
+            float dist = length(cd) - csz * 0.9;
+            if (dist < gCritter.x) gCritter = vec4(dist, cmod, code, kind + 4.0 * red);
+          }
+          if (dot(cd, cd) < pow(2.2 * csz, 2.0)) {
+            // Upright on the screen, leaning a little toward the treetop:
+            // a photograph wants its subject the right way up.
+            vec2 upv = normalize(vec2(-td.x * 0.35, 1.0));
+            vec2 cp = vec2(dot(cd, vec2(upv.y, -upv.x)), dot(cd, upv)) / csz;
+            if (fract(u * 7.7) < 0.5) cp.x = -cp.x;
+            float pu = 1.0 / (0.5 * min(uRes.x, uRes.y) * uView.z * csz);
+            // Every eye in the lens catches the flash; the one photographed
+            // shines on (a red one longest, flickering).
+            float g = uFlash < 1.2 ? 0.55 * smoothstep(0.0, 0.03, uFlash) * exp(-uFlash * 4.5) : 0.0;
+            if (uGlint.z >= 0.0 && abs(uGlint.x - cmod) < 0.5 && abs(uGlint.y - code) < 0.5) {
+              float ga = uGlint.z;
+              g += red > 0.5
+                ? smoothstep(0.0, 0.06, ga) * exp(-ga * 0.55) * (0.85 + 0.15 * sin(ga * 23.0)) * 1.2
+                : smoothstep(0.0, 0.06, ga) * exp(-ga * 1.6);
+            }
+            cr = critter(cp, pu, kind, red, g, lit);
+          }
+        }
+      }
 
       // One outline test for the whole tree before any of its planes.
-      vec2 td = normalize(tip);
       vec2 tr = mp - tip;
       float ts = dot(tr, td);
-      if (ts < -0.03 * sz) continue;
-      float tt = uTime + fl * 11.0 + hh.y * 5.0;
+      if (ts < -0.03 * sz && cr.a <= 0.0) continue;
       vec2 rock = pineRock(hh.x, sz, tt);
       float tsp = max(ts, 0.0);
       float tx = dot(tr, vec2(-td.y, td.x)) - rock.x * exp(-tsp * 1.4 / sz);
       float tBody = sz * (0.150 * (1.0 - exp(-tsp * 5.0 / sz)) + 0.045 * tsp);
-      if (abs(tx) > tBody + 0.05 * sz + abs(rock.y - rock.x)) continue;
+      if (abs(tx) > tBody + 0.05 * sz + abs(rock.y - rock.x) && cr.a <= 0.0) continue;
 
       // The planes stand evenly around the trunk. As the tree slides past
       // overhead you see it from a slowly changing angle, so each plane opens
@@ -1715,6 +1867,9 @@ vec4 canopy(vec2 p, float lit) {
         treePm = pc[pick] * a + treePm * (1.0 - a);
         treeA = a + treeA * (1.0 - a);
       }
+      // The creature sits in front of its tree's needles.
+      treePm = cr.rgb * cr.a + treePm * (1.0 - cr.a);
+      treeA = cr.a + treeA * (1.0 - cr.a);
       lanePm = treePm + lanePm * (1.0 - treeA);
       laneA = treeA + laneA * (1.0 - treeA);
     }
@@ -1981,7 +2136,7 @@ vec3 quarryStars(vec2 s, float excite, float t) {
     vec2 d = s - Q.xy;
     vec4 B = uQuarryB[i];
     float age = B.x;
-    float fl = (age >= 0.0 && age < 4.0) ? B.y : 0.0;
+    float fl = (age >= 0.0 && age < 8.0) ? B.y : 0.0;   // 8 s: keep in step with FLOURISH_LEN
     if (dot(d, d) > (fl > 0.0 ? 0.09 : 0.0016)) continue;
     float kind = floor(Q.z);
     float seed = fract(Q.z);
@@ -2022,19 +2177,24 @@ vec3 quarryStars(vec2 s, float excite, float t) {
     if (fl > 0.0) {
       vec2 dq = d * pxTrue;
       float rq = length(dq);
-      float env = smoothstep(0.0, 0.10, age) * exp(-age * 0.9);
+      float rise = smoothstep(0.0, 0.10, age);
       vec3 hue = glow / max(1e-4, max(glow.r, max(glow.g, glow.b)));
       hue = mix(vec3(1.0), clamp(hue, 0.0, 1.0), 0.55);
-      // The glint: the core flashes.
-      col *= 1.0 + 7.0 * env * fl;
+      // The glint: the core flashes, quickly.
+      col *= 1.0 + 7.0 * rise * exp(-age * 0.9) * fl;
+      // The lens flare (spikes, ring, bloom) runs at half speed, so it lasts
+      // twice as long (8 s), and eases out over all of it: no step at the end.
+      float a2 = age * 0.5;
+      float left = clamp(1.0 - age / 8.0, 0.0, 1.0);
+      float env = rise * left * left;
       // Long diffraction spikes, turning slowly, reaching out then fading.
-      float len = 18.0 + 170.0 * smoothstep(0.0, 0.7, age);
-      float ang = seed * TAU + age * 0.22;
+      float len = 18.0 + 170.0 * smoothstep(0.0, 0.7, a2);
+      float ang = seed * TAU + a2 * 0.22;
       float sp = qSpikes(dq, ang, len, 1.1) + 0.45 * qSpikes(dq, ang + 0.785, len * 0.55, 1.4);
       col += hue * sp * env * fl * 0.55;
       // A coloured ring that opens outward, its edge split into colour.
-      float rr = 14.0 + 150.0 * (1.0 - exp(-age * 1.6));
-      float ringA = exp(-age * 1.3) * smoothstep(0.0, 0.08, age);
+      float rr = 14.0 + 150.0 * (1.0 - exp(-a2 * 1.6));
+      float ringA = left * left * left * smoothstep(0.0, 0.08, age);
       vec3 ring = vec3(exp(-pow((rq - rr * 1.04) / 2.6, 2.0)),
                        exp(-pow((rq - rr) / 2.6, 2.0)),
                        exp(-pow((rq - rr * 0.96) / 2.6, 2.0)));
@@ -2114,6 +2274,45 @@ vec2 moonGlow(vec2 q) {
   return vec2(near, wide) * flare * uMoonOn;
 }
 
+// The saucer: a flat lens of dark metal with a glass dome, lit from the
+// right like the moon's horn, and a ring of lights chasing round its rim.
+// rgb: colour, a: coverage; glow: the lights, added on top.
+vec4 saucerAt(vec2 q, out vec3 glow) {
+  glow = vec3(0.0);
+  float size = uSaucerB.y;
+  vec2 p = rot(uSaucerB.x) * (q - uSaucer.xy) / size;
+  if (dot(p, p) > 4.0) return vec4(0.0);
+  float aa = 1.6 / (0.5 * min(uRes.x, uRes.y) * uView.z * size);
+  // The hull: a thin ellipse, a little fuller underneath.
+  vec2 e = p / vec2(1.0, p.y > 0.0 ? 0.17 : 0.24);
+  float hull = 1.0 - smoothstep(1.0 - aa * 4.0, 1.0 + aa * 4.0, length(e));
+  // The dome on top.
+  vec2 dp = (p - vec2(0.0, 0.08)) / vec2(0.40, 0.36);
+  float dome = (1.0 - smoothstep(1.0 - aa * 3.0, 1.0 + aa * 3.0, length(dp))) * step(0.0, p.y);
+  float cover = max(hull, dome);
+  // Moonlight (the sun, really) from the right: a bright upper-right edge.
+  float lit = smoothstep(-0.6, 0.9, p.x) * (0.35 + 0.65 * smoothstep(-0.2, 0.12, p.y));
+  vec3 metal = vec3(0.030, 0.032, 0.036) + MOON_LIGHT * 0.22 * lit * lit;
+  float glint = exp(-pow((p.y - 0.02) / 0.05, 2.0)) * smoothstep(0.2, 0.95, p.x) * hull;
+  metal += MOON_LIGHT * glint * 0.35;
+  vec3 glass = mix(vec3(0.05, 0.16, 0.12), vec3(0.32, 0.85, 0.62), 0.35 + 0.65 * lit);
+  vec3 col = mix(metal, glass, dome * (1.0 - hull * step(p.y, 0.04)));
+  // The rim lights, chasing round.
+  vec3 lights = vec3(0.0);
+  for (int k = 0; k < 5; k++) {
+    float fk = float(k);
+    vec2 lp = vec2(-0.72 + 0.36 * fk, -0.03);
+    float on = 0.25 + 0.75 * pow(0.5 + 0.5 * sin(uSaucerB.z * 7.0 - fk * 1.4), 4.0);
+    vec3 lc = mod(fk, 2.0) < 0.5 ? vec3(0.55, 1.0, 0.70) : vec3(1.0, 0.80, 0.45);
+    float r2 = dot(p - lp, p - lp);
+    lights += lc * on * (exp(-r2 / 0.006) * 1.4 + exp(-r2 / 0.08) * 0.25);
+  }
+  // A faint beam-glow underneath.
+  lights += vec3(0.40, 1.0, 0.65) * 0.18 * exp(-dot(p - vec2(0.0, -0.22), p - vec2(0.0, -0.22)) / 0.05);
+  glow = lights;
+  return vec4(col, cover);
+}
+
 vec3 skyScene(vec2 q, float maskRaw, vec4 flow, float excite, float light, float t) {
   vec2 ext = uRes / min(uRes.x, uRes.y);
   float hgt = q.y + ext.y;                           // height above the bottom edge
@@ -2137,6 +2336,15 @@ vec3 skyScene(vec2 q, float maskRaw, vec4 flow, float excite, float light, float
   vec2 mg = moonGlow(q);
   sky = mix(sky, moon.rgb, moon.a);
   sky += MOON_LIGHT * (mg.x * 0.020 + mg.y * 0.0045);
+  // The saucer, in front of the moon or hidden behind it.
+  vec3 sGlow = vec3(0.0);
+  vec4 sc = vec4(0.0);
+  float seen = 0.0;
+  if (uSaucer.w > 0.0) {
+    sc = saucerAt(q, sGlow);
+    seen = uSaucer.w * (uSaucer.z < 0.0 ? 1.0 - moon.a : 1.0);
+    sky = mix(sky, sc.rgb, sc.a * seen) + sGlow * seen;
+  }
 
   // Clouds live in wind space; the parted mask is sampled in the same space,
   // so a parted hole drifts along with the cloud around it.
@@ -2207,6 +2415,10 @@ vec3 skyScene(vec2 q, float maskRaw, vec4 flow, float excite, float light, float
   if (uMoonOn > 0.001) {
     float thinC = 1.0 - density;
     col += moon.rgb * moon.a * opacity * (0.06 + 0.78 * thinC * thinC);
+    // Like the moon, the saucer shows through haze: a dark shape against
+    // the lit cloud, its lights a blur.
+    float through = seen * opacity * (0.10 + 0.80 * thinC * thinC);
+    col = mix(col, sc.rgb, sc.a * through) + sGlow * through;
     col += MOON_LIGHT * opacity * (mg.x * (0.030 + 0.050 * thinC) + mg.y * (0.008 + 0.010 * density)) * (0.8 + 0.4 * fine);
     col += MOON_LIGHT * rim * mg.x * 0.10;
   }
@@ -2376,16 +2588,31 @@ void main() {
 
   // The pines pass in front of everything in the sky, painted dark included.
   // Light reaches them: an illuminated stroke turns the needles green.
+  // The probe answers two questions: how clear the sky is (r), and, with a
+  // reach (uProbe.z - 1), which creature in the pines is within it (g: its
+  // tree's cell mod 256; b: 1 + 2 * lane code + 16 * kind + 64 * red).
   if (probe) {
-    fragColor = vec4(gClear, 0.0, 0.0, 1.0);
+    float reach = uProbe.z - 1.0;
+    vec2 cb = vec2(0.0);
+    if (reach > 0.0 && uRide > 0.5) {
+      canopy(q, light);
+      if (gCritter.x < reach) {
+        float kr = gCritter.w;
+        float red = kr >= 4.0 ? 1.0 : 0.0;
+        cb = vec2(gCritter.y, 1.0 + 2.0 * gCritter.z + 16.0 * (kr - 4.0 * red) + 64.0 * red) / 255.0;
+      }
+    }
+    fragColor = vec4(gClear, cb, 1.0);
     return;
   }
 
-  // Through the camera the pines are out of the picture.
-  float rideHere = uRide * (1.0 - uScope);
+  // The pines stay in the picture through the camera: their creatures are
+  // there to be found.
+  float rideHere = uRide;
   if (rideHere > 0.001) {
     vec4 can = canopy(q, light);
     col = mix(col, can.rgb, can.a * rideHere);
+    col += gEyes * rideHere;
   }
 
   // The orb: a small pearl with a little chromatic mischief. (The pearl
@@ -2907,6 +3134,180 @@ VoidAudio.prototype.shutter = function (pan) {
     src.start(start, Math.random() * 1.0, 0.07);
     src.stop(start + 0.08);
   }
+};
+
+// The visitor's cue: a low, uneasy pad and a whistled, wavering line over
+// it, echoing into the dark. Our own little tune, in the spirit of late-night
+// television about the unexplained.
+VoidAudio.prototype.visitor = function () {
+  if (!this.enabled || !this.ctx || !this.master) return;
+  var ctx = this.ctx;
+  var t0 = ctx.currentTime + 0.35;
+  var end = t0 + 9.0;
+
+  // The echo: a long, darkening repeat.
+  var echoIn = ctx.createGain();
+  echoIn.gain.value = 0.55;
+  var delay = ctx.createDelay(1.0);
+  delay.delayTime.value = 0.43;
+  var damp = ctx.createBiquadFilter();
+  damp.type = 'lowpass';
+  damp.frequency.value = 2200;
+  var fb = ctx.createGain();
+  fb.gain.setValueAtTime(0.44, t0);
+  fb.gain.setValueAtTime(0.44, end - 1.5);
+  fb.gain.linearRampToValueAtTime(0, end);
+  echoIn.connect(delay);
+  delay.connect(damp);
+  damp.connect(fb);
+  fb.connect(delay);
+  damp.connect(this.fx);
+
+  // The pad: A, a hair detuned, with its minor third and fifth, opening slowly.
+  var lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 0.8;
+  lp.frequency.setValueAtTime(260, t0);
+  lp.frequency.exponentialRampToValueAtTime(900, t0 + 3.2);
+  lp.frequency.exponentialRampToValueAtTime(320, end);
+  var padG = ctx.createGain();
+  padG.gain.setValueAtTime(0.0001, t0);
+  padG.gain.exponentialRampToValueAtTime(0.045, t0 + 1.8);
+  padG.gain.setValueAtTime(0.045, t0 + 5.0);
+  padG.gain.exponentialRampToValueAtTime(0.0001, end);
+  lp.connect(padG);
+  padG.connect(this.fx);
+  [55, 55.35, 65.41, 82.41].forEach(function (f, i) {
+    var o = ctx.createOscillator();
+    o.type = i === 3 ? 'triangle' : 'sawtooth';
+    o.frequency.value = f;
+    var g = ctx.createGain();
+    g.gain.value = i === 3 ? 0.45 : 0.28;
+    o.connect(g);
+    g.connect(lp);
+    o.start(t0);
+    o.stop(end + 0.05);
+  });
+
+  // The whistle: a pure tone that slides between its notes, with a slow vibrato.
+  var lead = ctx.createOscillator();
+  lead.type = 'sine';
+  var notes = [[0.0, 659.3], [0.6, 987.8], [1.15, 932.3], [2.1, 740.0], [2.7, 784.0], [3.25, 659.3]];
+  lead.frequency.setValueAtTime(notes[0][1], t0);
+  for (var i = 1; i < notes.length; i++) {
+    lead.frequency.setTargetAtTime(notes[i][1], t0 + notes[i][0], 0.04);
+  }
+  lead.frequency.setTargetAtTime(640, t0 + 4.6, 0.6);
+  var vib = ctx.createOscillator();
+  vib.frequency.value = 5.3;
+  var vibDepth = ctx.createGain();
+  vibDepth.gain.setValueAtTime(0, t0);
+  vibDepth.gain.linearRampToValueAtTime(9, t0 + 0.6);
+  vib.connect(vibDepth);
+  vibDepth.connect(lead.frequency);
+  var leadG = ctx.createGain();
+  leadG.gain.setValueAtTime(0.0001, t0);
+  leadG.gain.exponentialRampToValueAtTime(0.040, t0 + 0.22);
+  leadG.gain.setValueAtTime(0.040, t0 + 4.2);
+  leadG.gain.exponentialRampToValueAtTime(0.0001, t0 + 6.2);
+  lead.connect(leadG);
+  leadG.connect(this.fx);
+  leadG.connect(echoIn);
+  lead.start(t0);
+  vib.start(t0);
+  lead.stop(t0 + 6.3);
+  vib.stop(t0 + 6.3);
+
+  setTimeout(function () {
+    try { fb.disconnect(); delay.disconnect(); damp.disconnect(); echoIn.disconnect(); } catch (e) { /* gone */ }
+  }, (end - ctx.currentTime + 1) * 1000);
+};
+
+// A soft, whispered snarl: breathy noise shaped like a hiss through teeth,
+// shaken by a ragged flutter, over a growl you feel more than hear.
+VoidAudio.prototype.snarl = function (pan) {
+  if (!this.enabled || !this.ctx || !this.master) return;
+  var ctx = this.ctx;
+  var t0 = ctx.currentTime + 0.10;
+  var end = t0 + 1.6;
+  var p = this._pan(pan);
+  p.connect(this.fx);
+
+  // The flutter: a rough, slightly wandering buzz that shakes everything.
+  var flut = ctx.createOscillator();
+  flut.type = 'sawtooth';
+  flut.frequency.setValueAtTime(31, t0);
+  flut.frequency.linearRampToValueAtTime(38, t0 + 0.35);
+  flut.frequency.linearRampToValueAtTime(26, end);
+  var wob = ctx.createOscillator();
+  wob.frequency.value = 6.5;
+  var wobG = ctx.createGain();
+  wobG.gain.value = 5;
+  wob.connect(wobG);
+  wobG.connect(flut.frequency);
+  var flutG = ctx.createGain();
+  flutG.gain.value = 0.45;
+  flut.connect(flutG);
+
+  // The whisper: noise through a vowel-ish band and a sibilant one.
+  var src = ctx.createBufferSource();
+  src.buffer = this.grainBuffer;
+  var b1 = ctx.createBiquadFilter();
+  b1.type = 'bandpass';
+  b1.Q.value = 2.6;
+  b1.frequency.setValueAtTime(900, t0);
+  b1.frequency.exponentialRampToValueAtTime(1500, t0 + 0.25);
+  b1.frequency.exponentialRampToValueAtTime(800, end);
+  var b2 = ctx.createBiquadFilter();
+  b2.type = 'bandpass';
+  b2.Q.value = 3.5;
+  b2.frequency.value = 3400;
+  var b2g = ctx.createGain();
+  b2g.gain.value = 0.35;
+  var shake = ctx.createGain();
+  shake.gain.value = 0.55;           // flutter swings it between ~0.1 and 1
+  flutG.connect(shake.gain);
+  src.connect(b1);
+  src.connect(b2);
+  b2.connect(b2g);
+  b1.connect(shake);
+  b2g.connect(shake);
+  var env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, t0);
+  env.gain.exponentialRampToValueAtTime(0.11, t0 + 0.14);
+  env.gain.exponentialRampToValueAtTime(0.07, t0 + 0.55);
+  env.gain.exponentialRampToValueAtTime(0.0001, end);
+  shake.connect(env);
+  env.connect(p);
+
+  // The growl underneath.
+  var gr = ctx.createOscillator();
+  gr.type = 'sawtooth';
+  gr.frequency.setValueAtTime(74, t0);
+  gr.frequency.exponentialRampToValueAtTime(62, end);
+  var grLp = ctx.createBiquadFilter();
+  grLp.type = 'lowpass';
+  grLp.frequency.value = 240;
+  var grShake = ctx.createGain();
+  grShake.gain.value = 0.5;
+  flutG.connect(grShake.gain);
+  var grEnv = ctx.createGain();
+  grEnv.gain.setValueAtTime(0.0001, t0);
+  grEnv.gain.exponentialRampToValueAtTime(0.05, t0 + 0.2);
+  grEnv.gain.exponentialRampToValueAtTime(0.0001, end - 0.1);
+  gr.connect(grLp);
+  grLp.connect(grShake);
+  grShake.connect(grEnv);
+  grEnv.connect(p);
+
+  src.start(t0, Math.random() * Math.max(0.01, this.grainBuffer.duration - 1.7), 1.65);
+  flut.start(t0);
+  wob.start(t0);
+  gr.start(t0);
+  src.stop(end + 0.05);
+  flut.stop(end + 0.05);
+  wob.stop(end + 0.05);
+  gr.stop(end + 0.05);
 };
 
 VoidAudio.prototype.aperture = function (kind, pan, strength) {
@@ -3482,7 +3883,11 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         scope: gl.getUniformLocation(program, 'uScope'),
         probe: gl.getUniformLocation(program, 'uProbe'),
         quarry: gl.getUniformLocation(program, 'uQuarry'),
-        quarryB: gl.getUniformLocation(program, 'uQuarryB')
+        quarryB: gl.getUniformLocation(program, 'uQuarryB'),
+        saucer: gl.getUniformLocation(program, 'uSaucer'),
+        saucerB: gl.getUniformLocation(program, 'uSaucerB'),
+        glint: gl.getUniformLocation(program, 'uGlint'),
+        flash: gl.getUniformLocation(program, 'uFlash')
       };
 
       var markData = new Float32Array(MAX_MARKS * 4);
@@ -5416,6 +5821,112 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         gl.uniform4fv(uniforms.quarryB, quarryDataB);
       }
 
+      // ---- the visitor ----
+      // Now and then (SAUCER_CHANCE) a picture of the moon brings a little
+      // flying saucer: it comes out from behind the sunlit horn, swings once
+      // round the front of the moon on a tilted orbit and slips away behind
+      // the dark side. Photograph it and the camera is taken away from you.
+      function spawnSaucer() {
+        saucer = {
+          age: -0.6,                       // it waits for the flash to clear
+          dur: 5.8,
+          a0: -1.35,
+          a1: Math.PI + 1.4,
+          ro: MOON_R * (1.55 + 0.25 * Math.random()),
+          k: 0.26 + 0.12 * Math.random(),
+          tilt: -0.35 + 0.45 * Math.random(),
+          size: 0.017,
+          fled: -1,
+          fx: 0,
+          fy: 0
+        };
+      }
+
+      // Where the saucer is now: x, y in scene units, z (+ in front of the
+      // moon, - behind it), size, opacity w and bank.
+      function saucerNow(S) {
+        var u = clamp(S.age / S.dur, 0, 1);
+        var e = 0.65 * u + 0.35 * u * u * (3 - 2 * u);
+        var a = S.a0 + (S.a1 - S.a0) * e;
+        var ox = S.ro * Math.cos(a);
+        var oy = -S.ro * S.k * Math.sin(a);
+        var c = Math.cos(S.tilt);
+        var s = Math.sin(S.tilt);
+        var o = {
+          x: pointer.x + c * ox - s * oy,
+          y: pointer.y + s * ox + c * oy,
+          z: Math.sin(a),
+          size: S.size * (1 + 0.15 * Math.sin(a)),
+          w: clamp(S.age / 0.3, 0, 1) * moonAmount,
+          bank: S.tilt + 0.07 * Math.sin(S.age * 2.3)
+        };
+        if (S.fled >= 0) {
+          // Caught: it shoots off, shrinking into the distance.
+          var f = S.age - S.fled;
+          o.x += S.fx * f * f * 2.6;
+          o.y += S.fy * f * f * 2.6;
+          o.size *= Math.max(0.15, 1 - f * 1.1);
+          o.w *= clamp(1 - f / 0.8, 0, 1);
+          o.z = 1;
+        }
+        return o;
+      }
+
+      function updateSaucer(dt) {
+        if (!saucer) return;
+        saucer.age += dt;
+        if (saucer.fled >= 0 ? saucer.age - saucer.fled > 0.8 : saucer.age > saucer.dur) saucer = null;
+      }
+
+      function uploadSaucer() {
+        saucerData[3] = 0;
+        if (saucer && saucer.age > 0) {
+          var o = saucerNow(saucer);
+          saucerData[0] = o.x;
+          saucerData[1] = o.y;
+          saucerData[2] = o.z;
+          saucerData[3] = o.w;
+          saucerDataB[0] = o.bank;
+          saucerDataB[1] = o.size;
+          saucerDataB[2] = saucer.age;
+        }
+        gl.uniform4fv(uniforms.saucer, saucerData);
+        gl.uniform4fv(uniforms.saucerB, saucerDataB);
+        var G = critterGlint;
+        if (G && time - G.at > 8) G = critterGlint = null;
+        gl.uniform4f(uniforms.glint, G ? G.cell : 0, G ? G.code : 0, G ? time - G.at : -1, G && G.red ? 1 : 0);
+        gl.uniform1f(uniforms.flash, Math.min(1e3, time - flashAt));
+      }
+
+      // Is the saucer in the reticle's ring, and not hidden behind the moon?
+      function saucerInShot() {
+        if (!saucer || saucer.fled >= 0 || saucer.age <= 0) return false;
+        var o = saucerNow(saucer);
+        if (o.w < 0.4) return false;
+        if (o.z < 0 && Math.hypot(o.x - pointer.x, o.y - pointer.y) < MOON_R) return false;
+        var tol = Math.max(SNAP_TOL / Math.max(1, SCOPE_ZOOM), o.size * 1.4);
+        return Math.hypot(o.x - scopeAim.x, o.y - scopeAim.y) < tol;
+      }
+
+      function moonInShot() {
+        return moonMode && moonAmount > 0.5 &&
+          Math.hypot(pointer.x - scopeAim.x, pointer.y - scopeAim.y) < MOON_R * 1.15;
+      }
+
+      function caughtSaucer() {
+        var o = saucerNow(saucer);
+        var dx = o.x - pointer.x;
+        var dy = o.y - pointer.y + 0.25;
+        var l = Math.hypot(dx, dy) || 1;
+        saucer.fled = saucer.age;
+        saucer.fx = dx / l;
+        saucer.fy = dy / l;
+        setScope(false);
+        showShot('<b>unidentified</b> &middot; the picture came out blank', 'miss', 5200);
+        audio.visitor();
+        try { if (navigator.vibrate) navigator.vibrate([30, 80, 30, 80, 120]); } catch (err) { /* optional */ }
+      }
+
       var scopeUi = document.getElementById('scopeUi');
       var reticleRing = document.getElementById('reticleRing');
       var reticleCross = document.getElementById('reticleCross');
@@ -5584,11 +6095,30 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       // picture is settled a frame or two later (stepShot, then resolveShot),
       // once the sky over it has been read back from the GPU.
       function shutter() {
+        var now = performance.now();
         if (!scope || scopeAmount < 0.9 || shotPending) return;
+        if (now - lastShutterAt < SHUTTER_COOLDOWN * 1000) return;
+        lastShutterAt = now;
         flashEl.classList.remove('go');
         void flashEl.offsetWidth;
         flashEl.classList.add('go');
+        flashAt = time;
         audio.shutter(0);
+        if (saucerInShot()) {
+          caughtSaucer();
+          return;
+        }
+        // On the ride, ask the GPU first whether a creature in the pines is
+        // in the ring; if not, look for a star (aimShot).
+        if (rideAmount > 0.5) {
+          shotPending = { critter: true, x: scopeAim.x, y: scopeAim.y };
+          return;
+        }
+        aimShot();
+      }
+
+      // The stars and the moon: what the picture holds when no creature does.
+      function aimShot() {
         var best = null;
         var bestD = 1e9;
         var bestP = null;
@@ -5601,6 +6131,11 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         }
         var tol = SNAP_TOL / Math.max(1, SCOPE_ZOOM);
         if (!best || bestD > tol) {
+          if (moonInShot()) {
+            showShot('the moon &middot; lovely, but not for the log', 'miss', 2200);
+            if (!saucer && Math.random() < SAUCER_CHANCE) spawnSaucer();
+            return;
+          }
           showShot('nothing in the crosshair', 'miss', 2200);
           return;
         }
@@ -5613,11 +6148,11 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       // place. The read goes into a pixel buffer behind a fence and is picked
       // up a frame or two later (stepShot): a plain readPixels waits for the
       // GPU to finish everything, which stalled the phone for ~100 ms.
-      function probeStart(x, y) {
+      function probeStart(x, y, reach) {
         ensureProbeTarget();
         gl.bindFramebuffer(gl.FRAMEBUFFER, probeTarget.fb);
         gl.viewport(0, 0, 1, 1);
-        gl.uniform3f(uniforms.probe, x, y, 1);
+        gl.uniform3f(uniforms.probe, x, y, 1 + (reach || 0));
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, probeTarget.pbo);
         gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, 0);
@@ -5657,8 +6192,8 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       function stepShot() {
         var s = shotPending;
         if (!s.fence) {
-          var p = s.warm ? { x: 0, y: 0 } : starToScene(s.Q.sx, s.Q.sy);
-          s.fence = probeStart(p.x, p.y);
+          var p = s.warm ? { x: 0, y: 0 } : s.critter ? s : starToScene(s.Q.sx, s.Q.sy);
+          s.fence = probeStart(p.x, p.y, s.critter ? SNAP_TOL / Math.max(1, SCOPE_ZOOM) : 0);
           s.frames = 0;
           return;
         }
@@ -5670,7 +6205,30 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, probeTarget.px);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
         shotPending = null;
-        if (!s.warm) resolveShot(s, probeTarget.px[0] / 255);
+        if (s.critter) resolveCritter(probeTarget.px[1], probeTarget.px[2]);
+        else if (!s.warm) resolveShot(s, probeTarget.px[0] / 255);
+      }
+
+      // A creature in the ring: its eyes glint in the flash; a red-eyed one
+      // snarls, softly.
+      function resolveCritter(cell, b) {
+        if (!(b & 1)) {
+          if (scope) aimShot();
+          return;
+        }
+        var code = (b >> 1) & 7;
+        var kind = CRITTER_KINDS[Math.min(2, (b >> 4) & 3)];
+        var red = !!((b >> 6) & 1);
+        critterGlint = { cell: cell, code: code, at: flashAt, red: red };
+        if (red) {
+          showShot('<b>a ' + kind + '</b> &middot; its eyes are red', 'creepy', 3800);
+          audio.snarl(0);
+          try { if (navigator.vibrate) navigator.vibrate([0, 120, 40, 60]); } catch (err) { /* optional */ }
+        } else {
+          var line = kind === 'squirrel' ? 'its eyes caught the flash'
+            : kind === 'nest' ? 'something in it looked back' : 'awake now';
+          showShot('<b>a ' + kind + '</b> &middot; ' + line, 'hit', 3200);
+        }
       }
 
       function starsText(n) {
@@ -5689,12 +6247,18 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         var clearQ = SNAP_CLEAR >= 0.999 ? 1 : clamp((clear - SNAP_CLEAR) / (1 - SNAP_CLEAR), 0, 1);
         var q = 0.5 * centred + 0.5 * clearQ;
         var score = q > 0.72 ? 3 : q > 0.4 ? 2 : 1;
-        Q.shotAt = time;
-        Q.flare = 0.55 + 0.15 * score;
+        // The flourish plays once through before it can play again: a
+        // picture taken while it is still going is logged, but quietly.
+        var flourish = !(Q.shotAt >= 0 && time - Q.shotAt < FLOURISH_LEN);
+        if (flourish) {
+          Q.shotAt = time;
+          Q.flare = 0.55 + 0.15 * score;
+        }
         var res = recordFind(Q, score);
         var tag = res === 'new' ? 'new' : res === 'better' ? 'a better picture' : 'already in the log';
         showShot('<b>' + Q.name + '</b> &middot; ' + QUARRY_KINDS[Q.kind] + ' &middot; <span class="stars">' +
           starsText(score) + '</span> &middot; ' + tag, 'hit', 4200);
+        if (!flourish) return;
         audio.aperture('light', 0, 0.9);
         try { if (navigator.vibrate) navigator.vibrate([8, 40, 18]); } catch (err) { /* optional */ }
       }
@@ -5812,6 +6376,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         updateOrb(dt);
         updateScope(dt);
         updateQuarry(dt);
+        updateSaucer(dt);
         layoutReticle();
         moonBreath *= Math.exp(-dt / moonBreathLife);
         moonAmount += ((moonMode ? 1 : 0) - moonAmount) * Math.min(1, dt * 2.2);
@@ -5821,7 +6386,8 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         // The pines keep passing while the ride fades in and out.
         rideAmount += ((ride ? 1 : 0) - rideAmount) * Math.min(1, dt * 1.3);
         if (rideAmount < 0.001 && !ride) rideAmount = 0;
-        if (rideAmount > 0) travel += dt * 0.16 * settings.pace * (reduceMotion ? 0.35 : 1);
+        // Through the camera the ride slows to a crawl, so a creature can be followed.
+        if (rideAmount > 0) travel += dt * 0.16 * settings.pace * (reduceMotion ? 0.35 : 1) * (1 - 0.8 * scopeAmount);
 
         // The wind only blows under the sky; the void keeps its mask still.
         skyAmount += ((sky ? 1 : 0) - skyAmount) * Math.min(1, dt * 1.1);
@@ -5871,6 +6437,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         gl.uniform4fv(uniforms.flyB, flyDataB);
         writeView();
         uploadQuarry();
+        uploadSaucer();
         if (flowOK) {
           gl.activeTexture(gl.TEXTURE1);
           gl.bindTexture(gl.TEXTURE_2D, flow.sky.tex);
