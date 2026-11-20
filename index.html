@@ -1083,6 +1083,11 @@
       maskCanvas.height = MASK_H;
       var maskCtx = maskCanvas.getContext('2d', { alpha: true });
       var maskTexture = null;
+      // Set by every draw on maskCanvas; uploadMask only sends it when set.
+      // At trail 8 the mask is never drawn on, and Chrome uploads a canvas
+      // that was never drawn on slowly (about 1 ms a frame), so re-sending an
+      // unchanged mask is not free.
+      var maskDirty = true;
       var lightData = new Float32Array(MAX_LIGHTS * 4);
       var lights = [];
       var MAX_ATTRACTORS = 8;
@@ -4120,6 +4125,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           maskCtx.fill();
         }
         maskCtx.restore();
+        maskDirty = true;
       }
 
       // Gusts queued by drags and taps, handed to the wind field each frame.
@@ -4326,6 +4332,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         maskCtx.fillStyle = 'rgba(0,0,0,' + a + ')';
         maskCtx.fillRect(0, 0, MASK_W, MASK_H);
         maskCtx.restore();
+        maskDirty = true;
       }
 
       function fadeMask(dt) {
@@ -4339,10 +4346,12 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         maskCtx.fillStyle = 'rgba(0,0,0,' + a + ')';
         maskCtx.fillRect(0, 0, MASK_W, MASK_H);
         maskCtx.restore();
+        maskDirty = true;
       }
 
       function clearMask() {
         if (maskCtx) maskCtx.clearRect(0, 0, MASK_W, MASK_H);
+        maskDirty = true;
       }
 
       function initMaskTexture() {
@@ -4354,12 +4363,14 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas);
+        maskDirty = false;
       }
 
       function uploadMask() {
-        if (!maskTexture) return;
+        if (!maskTexture || !maskDirty) return;
         gl.bindTexture(gl.TEXTURE_2D, maskTexture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas);
+        maskDirty = false;
       }
 
       function addMark(x, y, radius, life, strength, grow, vx, vy) {
@@ -7244,7 +7255,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           small: 'Sizes gustA and gustB; addGust drops the oldest.', large: 'Must match uSplatA[16] / uSplatB[16] in the sim shader.' },
         { n: 'MASK_W', g: 'struct', ro: true,
           what: 'Width of the 2D darkness mask (pixels).',
-          small: 'stampMask maps scene coordinates into it; uploadMask sends it to the GPU every frame.', large: 'Resolution of painted darkness in the void.' },
+          small: 'stampMask maps scene coordinates into it; uploadMask sends it to the GPU on frames where it changed.', large: 'Resolution of painted darkness in the void.' },
         { n: 'MASK_H', g: 'struct', ro: true,
           what: 'Height of the darkness mask (pixels).', small: 'See MASK_W.', large: 'See MASK_W.' },
         { n: 'FLOW_W', g: 'struct', ro: true, live: true,
