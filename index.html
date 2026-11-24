@@ -627,6 +627,33 @@
     .shot b { font-weight: 600; letter-spacing: 0.14em; }
     .shot .stars { color: #ffdfa6; letter-spacing: 0.06em; }
 
+    /* A score: a small number that rises from where it was earned and goes. */
+    .pt {
+      position: fixed;
+      z-index: 3;
+      left: 0;
+      top: 0;
+      color: #ffdfa6;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-shadow: 0 0 10px rgba(255, 200, 130, 0.45);
+      pointer-events: none;
+      opacity: 0;
+    }
+    .pt.go { animation: pt-rise 1.7s ease-out forwards; }
+    @keyframes pt-rise {
+      0% { opacity: 0; transform: translate(-50%, 2px); }
+      18% { opacity: 0.95; }
+      100% { opacity: 0; transform: translate(-50%, -30px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      @keyframes pt-rise {
+        0% { opacity: 0; transform: translate(-50%, 0); }
+        18% { opacity: 0.95; }
+        100% { opacity: 0; transform: translate(-50%, 0); }
+      }
+    }
+
     .log-summary { margin: 0 2px 6px; color: var(--ink-dim); font-size: 10px; letter-spacing: 0.05em; }
     .log-summary:empty { display: none; }
     .log-list { list-style: none; margin: 0; padding: 0; }
@@ -1060,6 +1087,8 @@
         curve: TUNE_DEFAULTS.curve,
         pace: TUNE_DEFAULTS.pace
       };
+      // TV browsers have slow CPUs as well as GPUs: start with half the dust.
+      if (/web0s|webos|smarttv|smart-tv|tizen|netcast|hbbtv/i.test(navigator.userAgent || '')) settings.particles = 600;
       function validHex(v) { return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v); }
       try {
         var savedTune = JSON.parse(localStorage.getItem('opal.tune') || '{}');
@@ -1178,11 +1207,22 @@ uniform vec4 uSaucerB;
 // uFlash: seconds since the camera's flash last fired.
 uniform vec4 uGlint;
 uniform float uFlash;
+// The moon's cycle: x how full it is (0 the crescent, 1 full), y the flare of
+// a full moon just reached.
+uniform vec2 uMoonCycle;
+// A streetlamp on the ride: xy its head in scene units, z how bright it is
+// now, w how present it is (0 = none, and the shader skips all of it).
+uniform vec4 uLamp;
+// A lamp put out: 0..1, the town glow sinks and low stars come through.
+uniform float uSkyDark;
 // The probe's look into the trees: the creature nearest the probe point.
 // x: distance from its body, y: tree cell mod 256, z: lane code, w: kind + 4 * red.
 vec4 gCritter = vec4(1e3, 0.0, 0.0, 0.0);
 // Light from creatures' eyes, added over the canopy.
 vec3 gEyes = vec3(0.0);
+// The streetlamp's light at this pixel, worked out once in canopy().
+float gLampL = 0.0;
+const vec3 LAMP_WARM = vec3(1.0, 0.56, 0.20);
 // How much clear sky skyScene() found at this pixel (1 = none in the way).
 float gClear = 0.0;
 
@@ -1644,6 +1684,7 @@ vec4 fallingNeedles(vec2 p, vec2 ext, float lit, float t) {
   vec3 brown = vec3(0.030, 0.020, 0.011) + uPal[2] * 0.04;
   vec3 c = mix(green, brown, dry) + vec3(0.010, 0.030, 0.013) * lit * 2.2;
   c += (uPal[3] * 0.05 + vec3(0.004, 0.010, 0.005)) * glint;
+  c += LAMP_WARM * 0.22 * gLampL * (0.6 + 0.8 * glint);
   return vec4(c, cover);
 }
 
@@ -1675,7 +1716,7 @@ void eyeLight(vec2 p, vec2 e, float g, float red) {
 // p: the creature's own frame (x forward, y up, 1 = its size); pu: one screen
 // pixel in those units; kind 0 squirrel, 1 nest, 2 bird; g: how hard its eyes
 // shine. rgb: colour, a: coverage.
-vec4 critter(vec2 p, float pu, float kind, float red, float g, float lit) {
+vec4 critter(vec2 p, float pu, float kind, float red, float g, float lit, float lampK, vec2 lampDir) {
   float cov = 0.0;
   float eyeW = 0.0;
   // Warm grey fur and feathers, a shade lighter than the needles, lighter on
@@ -1721,9 +1762,52 @@ vec4 critter(vec2 p, float pu, float kind, float red, float g, float lit) {
     cov = max(cov, smoothstep(pu, -pu, abs(p.y + 0.52) - 0.06) * step(abs(p.x), 1.3));
   }
   col += vec3(0.010, 0.008, 0.006) * lit;
+  // Lamplight on the fur or feathers, on the side that faces the lamp.
+  if (lampK > 0.002) {
+    float facing = clamp(0.5 + 0.6 * dot(normalize(p + vec2(0.0, 0.12)), lampDir), 0.0, 1.0);
+    col += LAMP_WARM * 0.34 * lampK * (0.28 + 0.72 * facing);
+  }
   // The whites of the eyes: faint until the flash finds them.
   col = mix(col, vec3(0.085, 0.082, 0.076), eyeW);
   return vec4(col, cov);
+}
+
+// A streetlamp seen from below, like the pines: the post comes in from the
+// edge of the view, bends over the path on a short arm, and ends in a head
+// whose lens faces you. rgb: colour, a: coverage.
+vec4 lampBody(vec2 p) {
+  vec2 h = uLamp.xy;
+  vec2 td = normalize(h);
+  vec2 perp = vec2(-td.y, td.x);
+  if (perp.y < 0.0) perp = -perp;
+  float px = 2.0 / (min(uRes.x, uRes.y) * uView.z);
+  vec2 bend = h + td * 0.105 - perp * 0.055;
+  vec2 ctrl = bend - td * 0.060;
+  vec2 foot = h + td * 3.2;
+
+  vec3 post = segT(p, foot, bend);
+  float d = post.x - mix(0.030, 0.0072, pow(post.y, 3.0));
+  vec2 prev = bend;
+  for (int i = 1; i <= 4; i++) {
+    float t = float(i) / 4.0;
+    vec2 q = mix(mix(bend, ctrl, t), mix(ctrl, h, t), t);
+    d = min(d, segT(p, prev, q).x - 0.0058);
+    prev = q;
+  }
+  vec2 u = normalize(h - ctrl);
+  vec2 v = vec2(-u.y, u.x);
+  vec2 lp = vec2(dot(p - h, u), dot(p - h, v));
+  float hd = (length(lp / vec2(0.040, 0.018)) - 1.0) * 0.018;
+  d = min(d, hd);
+  float cover = 1.0 - smoothstep(-px, px, d);
+  if (cover <= 0.0) return vec4(0.0);
+
+  // Dark metal, with a little of its own light along the edges.
+  vec3 col = vec3(0.0065, 0.0065, 0.0075) + LAMP_WARM * 0.10 * gLampL;
+  float lens = 1.0 - smoothstep(-px, px, (length(lp / vec2(0.029, 0.0115)) - 1.0) * 0.0115);
+  float hot = exp(-dot(lp / vec2(0.020, 0.0075), lp / vec2(0.020, 0.0075)));
+  vec3 glass = vec3(0.016, 0.013, 0.010) + (LAMP_WARM * 1.5 + vec3(1.2, 1.0, 0.75) * hot * 1.4) * uLamp.z;
+  return vec4(mix(col, glass, lens), cover);
 }
 
 // The ride: three lanes of pines on each side of the path. A tip only ever
@@ -1738,6 +1822,17 @@ vec4 canopy(vec2 p, float lit) {
   vec3 rgb = vec3(0.0);
   float alpha = 0.0;
   bool fine = uPines > 0.5;
+  bool lampOn = uLamp.w > 0.001;
+  vec2 mLamp = vec2(0.0);
+  if (lampOn) {
+    vec2 ld = uLamp.xy - p;
+    float r2 = dot(ld, ld);
+    gLampL = uLamp.z * uLamp.w * (exp(-r2 / 0.11) + 0.42 * exp(-r2 / 0.62));
+    ld /= sqrt(r2) + 1e-4;
+    mLamp = vec2(ld.x * side, ld.y);       // toward the lamp, in the mirrored frame
+    gEyes += LAMP_WARM * uLamp.z * uLamp.w *
+      (exp(-r2 / 0.0014) * 0.75 + exp(-r2 / 0.012) * 0.13 + exp(-r2 / 0.14) * 0.016);
+  }
 
   for (int L = 0; L < 3; L++) {
     float fl = float(L);
@@ -1755,6 +1850,8 @@ vec4 canopy(vec2 p, float lit) {
     float glow = (0.26 + 0.10 * fl) * (fine ? 0.45 + 1.4 * gust : 1.0);
     vec3 lanePm = vec3(0.0);
     float laneA = 0.0;
+    // The lamp stands between the middle and the nearest lane.
+    float laneLamp = gLampL * (L == 0 ? 0.55 : (L == 1 ? 1.0 : 0.82));
 
     for (int k = 0; k < 14; k++) {
       float c = c0 + float(k);
@@ -1795,7 +1892,8 @@ vec4 canopy(vec2 p, float lit) {
             // a photograph wants its subject the right way up.
             vec2 upv = normalize(vec2(-td.x * 0.35, 1.0));
             vec2 cp = vec2(dot(cd, vec2(upv.y, -upv.x)), dot(cd, upv)) / csz;
-            if (fract(u * 7.7) < 0.5) cp.x = -cp.x;
+            vec2 cl = vec2(dot(mLamp, vec2(upv.y, -upv.x)), dot(mLamp, upv));
+            if (fract(u * 7.7) < 0.5) { cp.x = -cp.x; cl.x = -cl.x; }
             float pu = 1.0 / (0.5 * min(uRes.x, uRes.y) * uView.z * csz);
             // Every eye in the lens catches the flash; the one photographed
             // shines on (a red one longest, flickering).
@@ -1806,7 +1904,9 @@ vec4 canopy(vec2 p, float lit) {
                 ? smoothstep(0.0, 0.06, ga) * exp(-ga * 0.55) * (0.85 + 0.15 * sin(ga * 23.0)) * 1.2
                 : smoothstep(0.0, 0.06, ga) * exp(-ga * 1.6);
             }
-            cr = critter(cp, pu, kind, red, g, lit);
+            // Close to the lamp, eyes hold a faint steady shine of it.
+            g += 0.22 * laneLamp * laneLamp;
+            cr = critter(cp, pu, kind, red, g, lit, laneLamp, cl);
           }
         }
       }
@@ -1826,6 +1926,10 @@ vec4 canopy(vec2 p, float lit) {
       // and closes in turn while the outline, the widest of them, holds.
       float phi = ty / ext.y * 0.65 + hh.x * 3.0;
       float xs = tx < 0.0 ? -1.0 : 1.0;
+      // The side of the tree that faces the lamp takes its light.
+      float treeLamp = laneLamp > 0.002
+        ? laneLamp * (0.22 + 0.78 * clamp(0.5 + 0.65 * dot(vec2(-td.y, td.x) * xs, mLamp), 0.0, 1.0))
+        : 0.0;
       float pa[PINE_PLANES];
       float pz[PINE_PLANES];
       vec3 pc[PINE_PLANES];
@@ -1853,6 +1957,9 @@ vec4 canopy(vec2 p, float lit) {
         cj *= 1.0 - 0.35 * sh;
         cj += needle * fr * glow * (0.55 + 0.45 * face);
         cj += needle * lit * (1.5 + 2.6 * fr) * (0.70 + 0.30 * near);
+        // Warm on the needle tips and the planes turned to it; the deep of
+        // the crown stays dark, so the tree gets a lit edge, not a tint.
+        if (treeLamp > 0.002) cj += LAMP_WARM * 0.34 * treeLamp * (0.13 + 1.55 * fr) * (0.40 + 0.60 * near) * (0.35 + 0.65 * face);
         pa[j] = a;
         pz[j] = z;
         pc[j] = cj;
@@ -1882,6 +1989,13 @@ vec4 canopy(vec2 p, float lit) {
     vec3 c = lanePm / max(laneA, 1e-4);
     rgb = mix(rgb, c, laneA);
     alpha += laneA * (1.0 - alpha);
+
+    if (L == 1 && lampOn) {
+      vec4 lb = lampBody(p);
+      float la = lb.a * uLamp.w;
+      rgb = alpha > 0.001 ? mix(rgb, lb.rgb, la) : lb.rgb;
+      alpha += la * (1.0 - alpha);
+    }
   }
 
   if (fine) {
@@ -2248,7 +2362,11 @@ vec4 moonDisc(vec2 q) {
   if (cover <= 0.0) return vec4(0.0);
   d = rot(MOON_TILT) * d;
   vec3 n = vec3(d, sqrt(max(0.0, 1.0 - dot(d, d))));
-  vec3 L = vec3(sin(MOON_PHASE), 0.0, cos(MOON_PHASE));
+  // MOON_PHASE is the crescent it starts from. Fullness moves the lit share
+  // of the disc evenly from there to full.
+  float litShare = mix(0.5 + 0.5 * cos(MOON_PHASE), 0.9975, uMoonCycle.x);
+  float sunAngle = acos(clamp(2.0 * litShare - 1.0, -1.0, 1.0));
+  vec3 L = vec3(sin(sunAngle), 0.0, cos(sunAngle));
   float ndl = dot(n, L);
   // A soft, slightly ragged terminator: the highlands catch the light first.
   vec2 st = n.xy / (0.55 + 0.45 * n.z);
@@ -2259,7 +2377,9 @@ vec4 moonDisc(vec2 q) {
   vec3 albedo = mix(vec3(1.0, 0.975, 0.92), vec3(0.60, 0.63, 0.68), mare * 0.75);
   albedo *= 0.86 + 0.32 * (rough - 0.5);
   float shade = 0.38 + 0.62 * clamp(ndl * 1.7, 0.0, 1.0);
-  vec3 sun = albedo * MOON_LIGHT * lit * shade * MOON_BRIGHT;
+  // A whole lit disc is far more light than a crescent: ease it down.
+  float fullEase = mix(1.0, 0.60, uMoonCycle.x * uMoonCycle.x) + 0.35 * uMoonCycle.y;
+  vec3 sun = albedo * MOON_LIGHT * lit * shade * MOON_BRIGHT * fullEase;
   // Earthshine: dim, cool, a little brighter toward the middle of the disc.
   vec3 ash = albedo * vec3(0.55, 0.62, 0.80) * MOON_ASHEN * (0.55 + 0.45 * n.z);
   // A thin bright rim on the sunlit limb, the painter's touch.
@@ -2271,11 +2391,11 @@ vec4 moonDisc(vec2 q) {
 // near: a tight glow; wide: the broad wash that lights the cloud.
 vec2 moonGlow(vec2 q) {
   vec2 L = rot(-MOON_TILT) * vec2(1.0, 0.0);
-  vec2 d = q - uPointer - L * MOON_R * 0.35;
+  vec2 d = q - uPointer - L * MOON_R * 0.35 * (1.0 - uMoonCycle.x);
   float dist = max(0.0, length(d) - MOON_R * 0.8);
   float near = exp(-dist / 0.10);
   float wide = exp(-dist / 0.50);
-  float flare = 1.0 + 0.9 * uPress;
+  float flare = (1.0 + 0.9 * uPress) * (1.0 + 1.0 * uMoonCycle.x + 1.6 * uMoonCycle.y);
   return vec2(near, wide) * flare * uMoonOn;
 }
 
@@ -2329,10 +2449,10 @@ vec3 skyScene(vec2 q, float maskRaw, vec4 flow, float excite, float light, float
 
   // Clear sky: deep blue at the zenith, a warm glow of distant towns low down.
   vec3 zenith = vec3(0.0012, 0.0017, 0.0040);
-  vec3 low = vec3(0.0085, 0.0074, 0.0070);
+  vec3 low = vec3(0.0085, 0.0074, 0.0070) * (1.0 - 0.68 * uSkyDark);
   vec3 sky = mix(zenith, low, horizon);
 
-  float extinction = 1.0 - horizon * 0.75;
+  float extinction = (1.0 - horizon * 0.75 * (1.0 - 0.72 * uSkyDark)) * (1.0 + 0.18 * uSkyDark);
   sky += (skyStars(s, excite, t) + quarryStars(s, excite, t)) * extinction;
 
   // The moon hangs in front of the stars and behind every cloud.
@@ -3775,7 +3895,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       // The grid follows the screen's shape so its cells stay square; a fixed
       // 2:1 grid on a tall phone made cells four times taller than wide, and
       // fast strokes showed them as steps along the torn edges.
-      var FLOW_LONG = 384;
+      var FLOW_LONG = /web0s|webos|smarttv|smart-tv|tizen|netcast|hbbtv/i.test(navigator.userAgent || '') ? 256 : 384;
       var FLOW_W = 256;
       var FLOW_H = 128;
       function flowDims() {
@@ -3892,7 +4012,10 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         saucer: gl.getUniformLocation(program, 'uSaucer'),
         saucerB: gl.getUniformLocation(program, 'uSaucerB'),
         glint: gl.getUniformLocation(program, 'uGlint'),
-        flash: gl.getUniformLocation(program, 'uFlash')
+        flash: gl.getUniformLocation(program, 'uFlash'),
+        moonCycle: gl.getUniformLocation(program, 'uMoonCycle'),
+        lamp: gl.getUniformLocation(program, 'uLamp'),
+        skyDark: gl.getUniformLocation(program, 'uSkyDark')
       };
 
       var markData = new Float32Array(MAX_MARKS * 4);
@@ -4504,7 +4627,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         }
       }
 
-      // Dust is simulated in scene units (x: +-aspect, y: +-1) so every force is
+      // Dust is simulated in scene units (x: +-viewExt().x, y: +-viewExt().y) so every force is
       // round on any screen; positions stay in 0..1 for the point shader.
       function recruitParticle() {
         // Borrow a quiet mote rather than one that is visibly busy, and fade it
@@ -4522,14 +4645,14 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
 
       function pullParticles(x, y, count, force) {
         if (!activeParticles) return;
-        var aspect = canvas.width / Math.max(1, canvas.height);
+        var ext = viewExt();
         var vscale = settings.velocity;
         for (var i = 0; i < count; i++) {
           var p = recruitParticle();
           var a = Math.random() * Math.PI * 2;
           var rad = 0.20 + Math.random() * 0.40;
-          p.x = (x + Math.cos(a) * rad) / (2.0 * aspect) + 0.5;
-          p.y = (y + Math.sin(a) * rad) * 0.5 + 0.5;
+          p.x = (x + Math.cos(a) * rad) / (2.0 * ext.x) + 0.5;
+          p.y = (y + Math.sin(a) * rad) / (2.0 * ext.y) + 0.5;
           var inward = (0.05 + Math.random() * 0.12) * force * vscale;
           p.vx = -Math.cos(a) * inward - Math.sin(a) * inward * 0.5;
           p.vy = -Math.sin(a) * inward + Math.cos(a) * inward * 0.5;
@@ -4543,13 +4666,13 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       // A single soft puff: nearby dust is nudged outward once and then eases
       // to rest under drag, instead of being shoved for as long as a ripple lasts.
       function impulseParticles(x, y, radius, strength) {
-        var aspect = canvas.width / Math.max(1, canvas.height);
+        var ext = viewExt();
         var vscale = settings.velocity;
         if (!vscale) return;
         for (var i = 0; i < activeParticles; i++) {
           var p = particles[i];
-          var dx = (p.x - 0.5) * 2.0 * aspect - x;
-          var dy = (p.y - 0.5) * 2.0 - y;
+          var dx = (p.x - 0.5) * 2.0 * ext.x - x;
+          var dy = (p.y - 0.5) * 2.0 * ext.y - y;
           var d = Math.hypot(dx, dy);
           if (d > radius) continue;
           var w = 1 - d / radius;
@@ -4831,13 +4954,13 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
 
       function burstParticles(x, y, count, force) {
         if (!activeParticles) return;
-        var aspect = canvas.width / Math.max(1, canvas.height);
+        var ext = viewExt();
         for (var i = 0; i < count; i++) {
           var p = recruitParticle();
           var a = Math.random() * Math.PI * 2;
           var rad = 0.08 + Math.random() * 0.22;
-          p.x = (x + Math.cos(a) * rad) / (2.0 * aspect) + 0.5;
-          p.y = (y + Math.sin(a) * rad) * 0.5 + 0.5;
+          p.x = (x + Math.cos(a) * rad) / (2.0 * ext.x) + 0.5;
+          p.y = (y + Math.sin(a) * rad) / (2.0 * ext.y) + 0.5;
           var sp = (0.06 + Math.random() * 0.22) * force * settings.velocity;
           var turn = (Math.random() - 0.5) * 0.6;
           p.vx = (Math.cos(a) - Math.sin(a) * turn) * sp;
@@ -4875,7 +4998,8 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
             flake: Math.random() < 0.35 ? 0.6 + Math.random() * 0.4 : 0,
             glintRate: 0.025 + Math.random() * 0.060,
             glintPhase: Math.random(),
-            lit: 0
+            lit: 0,
+            hitAt: 0
           });
         }
       }
@@ -5104,9 +5228,10 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       }
 
       function updateParticles(dt) {
-        var aspect = canvas.width / Math.max(1, canvas.height);
+        var ext = viewExt();
         var vscale = settings.velocity;
-        var toU = 0.5 / aspect;
+        var toU = 0.5 / ext.x;
+        var toV = 0.5 / ext.y;
         var stirR = 0.20 + 0.10 * settings.brush;
         var stirReach = stirR * stirR * 6.25;
         var orbitR = 0.07 + 0.05 * settings.brush;
@@ -5120,10 +5245,13 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         // The steady wind comes and goes in long, slow breaths.
         var windBreath = 0.55 + 0.45 * Math.sin(time * 0.13) * Math.sin(time * 0.051 + 1.3) + 0.25;
         var moonLight = moonMode && skyOn ? moonAmount : 0;
+        var moonGlowUp = 1 + 0.45 * moonShown;
+        var lampNow = lamp && skyOn ? lampLightNow() * rideAmount : 0;
+        var lampAt = lampNow > 0 ? lampHead() : null;
         for (var i = 0; i < activeParticles; i++) {
           var p = particles[i];
-          var px = (p.x - 0.5) * 2.0 * aspect;
-          var py = (p.y - 0.5) * 2.0;
+          var px = (p.x - 0.5) * 2.0 * ext.x;
+          var py = (p.y - 0.5) * 2.0 * ext.y;
           var extraDrag = 0;
           var near = 1 - p.depth;
 
@@ -5285,7 +5413,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           p.vy *= damp;
           speed *= damp;
           p.x += p.vx * toU * dt;
-          p.y += p.vy * 0.5 * dt;
+          p.y += p.vy * toV * dt;
           if (p.x < -0.08) p.x = 1.08;
           if (p.x > 1.08) p.x = -0.08;
           if (p.y < -0.08) p.y = 1.08;
@@ -5295,15 +5423,35 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           p.flash *= Math.pow(0.88, dt * 60);
           p.fade = Math.min(1, p.fade + dt * 4.0);
 
-          var psx = (p.x - 0.5) * 2.0 * aspect;
-          var psy = (p.y - 0.5) * 2.0;
+          var psx = (p.x - 0.5) * 2.0 * ext.x;
+          var psy = (p.y - 0.5) * 2.0 * ext.y;
           var moteGlow = p.base + Math.min(0.22, speed * 0.20);
           p.lit = 0;
           if (skyOn) {
             // Moonlight scatters off dust seen near the moon.
             if (moonLight > 0) {
               var mdist = Math.hypot(psx - pointer.x, psy - pointer.y);
-              p.lit = moonLight * Math.exp(-Math.max(0, mdist - MOON_R) / MOTE_MOON_REACH);
+              p.lit = moonLight * moonGlowUp * Math.exp(-Math.max(0, mdist - MOON_R) / MOTE_MOON_REACH);
+              // Dust the wind throws at the moon strikes its rim and bounces.
+              // A held moon only parts the dust, so it never counts.
+              if (!moonGrab && !p.blur && moonAmount > 0.9 && mdist < MOON_R && mdist > MOON_R * 0.72 &&
+                  speed > MOON_HIT_SPEED * vscale && time >= p.hitAt) {
+                var hnx = (psx - pointer.x) / mdist;
+                var hny = (psy - pointer.y) / mdist;
+                var hvn = (p.vx - moonVel.x) * hnx + (p.vy - moonVel.y) * hny;
+                if (hvn < -MOON_HIT_SPEED * vscale) {
+                  p.vx -= 1.65 * hvn * hnx;
+                  p.vy -= 1.65 * hvn * hny;
+                  psx = pointer.x + hnx * MOON_R;
+                  psy = pointer.y + hny * MOON_R;
+                  p.x = psx / (2.0 * ext.x) + 0.5;
+                  p.y = psy / (2.0 * ext.y) + 0.5;
+                  p.hitAt = time + 1.2;
+                  p.flash = Math.max(p.flash, 1.1);
+                  p.energy = Math.max(p.energy, 0.8);
+                  moonHit();
+                }
+              }
             }
             var twinkle = 0.70 + 0.30 * Math.sin(time * p.tw + p.phase);
             // A flake catches the light for a moment as it turns; near the
@@ -5321,6 +5469,12 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
             moteGlow += (skyGlow - moteGlow) * skyAmount;
           }
           var lightUp = moteGlow + p.energy * 0.25 + p.flash * 0.55;
+          // Dust drifting through the lamp's light shows it.
+          if (lampAt) {
+            var ldx = psx - lampAt.x;
+            var ldy = psy - lampAt.y;
+            lightUp += 0.5 * lampNow * Math.exp(-(ldx * ldx + ldy * ldy) / 0.07);
+          }
           // A near mote spreads all its light over a wide, soft disc.
           if (p.blur > 0) lightUp *= 1 - 0.955 * skyAmount;
           p.bright = lightUp * p.fade * (stillMode ? 0.35 : 1.0);
@@ -5345,7 +5499,9 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         if (!particleProgram) return;
         var cw = Math.max(1, canvas.width);
         var ch = Math.max(1, canvas.height);
-        var toU = 0.5 / (cw / ch);
+        var ext = viewExt();
+        var toU = 0.5 / ext.x;
+        var toV = 0.5 / ext.y;
         // Sky mote sizes are fractions of the short side of the view; the
         // point shader measures sizes against its height.
         var toH = Math.min(cw, ch) / ch;
@@ -5357,7 +5513,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           var p = particles[i];
           var base = i * 3 * F;
           var ux = p.vx * toU;
-          var uy = p.vy * 0.5;
+          var uy = p.vy * toV;
           var lag = 0.030 + Math.min(0.070, Math.hypot(p.vx, p.vy) * 0.06);
           var lightOut = 1.0 - p.dark * 0.93;
           var near = 1 - p.depth;
@@ -5575,13 +5731,42 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         panel.setAttribute('aria-hidden', open ? 'false' : 'true');
       }
 
+      // Adaptive render scale. Weak GPUs (TV browsers above all) cannot fill
+      // ~2 MP of this shader at 60 fps, so the backing canvas shrinks until
+      // frames keep up, and grows back slowly when there is headroom. Every
+      // size in the scene is relative to the canvas, so only sharpness changes.
+      var IS_TV = /web0s|webos|smarttv|smart-tv|tizen|netcast|hbbtv|bravia|aft[a-z]|crkey|vidaa/i.test(navigator.userAgent || '');
+      var renderScale = IS_TV ? 0.5 : 1;
+      var RENDER_SCALE_MIN = 0.3;
+      var perfAvg = 16.7;
+      var perfFrames = 0;
+      var perfCool = 0;
+      function adaptRenderScale(ms) {
+        // Ignore stalls (tab switches, GC hitches) and the first frames.
+        if (ms <= 0 || ms > 120) return;
+        perfAvg += (ms - perfAvg) * 0.06;
+        if (++perfFrames < 45 || --perfCool > 0) return;
+        var next = renderScale;
+        if (perfAvg > 21) next = Math.max(RENDER_SCALE_MIN, renderScale * (perfAvg > 30 ? 0.8 : 0.9));
+        else if (perfAvg < 17.6 && renderScale < 1) next = Math.min(1, renderScale * 1.06);
+        if (Math.abs(next - renderScale) > 0.005) {
+          var grew = next > renderScale;
+          renderScale = next;
+          resize();
+          // Settle before judging again; wait longer after growing so a
+          // marginal device does not keep bouncing between two sizes.
+          perfCool = grew ? 240 : 60;
+          perfAvg = grew ? 16.7 : Math.min(perfAvg, 24);
+        }
+      }
+
       function resize() {
         var w = window.innerWidth || document.documentElement.clientWidth || 1;
         var h = window.innerHeight || document.documentElement.clientHeight || 1;
-        var dpr = Math.min(window.devicePixelRatio || 1, 1.55);
+        var dpr = Math.min(window.devicePixelRatio || 1, 1.55) * renderScale;
         var cw = Math.max(1, Math.round(w * dpr));
         var ch = Math.max(1, Math.round(h * dpr));
-        var maxPixels = 2100000;
+        var maxPixels = IS_TV ? 1000000 : 2100000;
         if (cw * ch > maxPixels) {
           var scale = Math.sqrt(maxPixels / (cw * ch));
           cw = Math.max(1, Math.round(cw * scale));
@@ -6119,6 +6304,10 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           caughtSaucer();
           return;
         }
+        if (lampInShot()) {
+          caughtLamp();
+          return;
+        }
         // On the ride, ask the GPU first whether a creature in the pines is
         // in the ring; if not, look for a star (aimShot).
         if (rideAmount > 0.5) {
@@ -6267,6 +6456,10 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         }
         var res = recordFind(Q, score);
         var tag = res === 'new' ? 'new' : res === 'better' ? 'a better picture' : 'already in the log';
+        if (res !== 'again') {
+          var at = starToScene(Q.sx, Q.sy);
+          addPoints(res === 'new' ? 10 * score : 5, at.x, at.y);
+        }
         showShot('<b>' + Q.name + '</b> &middot; ' + QUARRY_KINDS[Q.kind] + ' &middot; <span class="stars">' +
           starsText(score) + '</span> &middot; ' + tag, 'hit', 4200);
         if (!flourish) return;
@@ -6320,12 +6513,8 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       }
 
       function renderLog() {
-        var kinds = {};
-        logEntries.forEach(function (x) { kinds[x.kind] = (kinds[x.kind] || 0) + 1; });
         var n = logEntries.length;
-        logSummary.textContent = n === 0 ? '' :
-          n + (n === 1 ? ' star' : ' stars') + ' · ' +
-          QUARRY_KINDS.filter(function (k) { return kinds[k]; }).map(function (k) { return kinds[k] + ' ' + k; }).join(', ');
+        renderLogSummary();
         logList.textContent = '';
         if (n === 0) {
           var empty = document.createElement('li');
@@ -6361,10 +6550,213 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         });
       }
 
+      function renderLogSummary() {
+        var kinds = {};
+        logEntries.forEach(function (x) { kinds[x.kind] = (kinds[x.kind] || 0) + 1; });
+        var n = logEntries.length;
+        var bits = [];
+        if (pointsTotal > 0) bits.push(pointsTotal.toLocaleString() + (pointsTotal === 1 ? ' point' : ' points'));
+        if (n > 0) {
+          bits.push(n + (n === 1 ? ' star' : ' stars'));
+          bits.push(QUARRY_KINDS.filter(function (k) { return kinds[k]; }).map(function (k) { return kinds[k] + ' ' + k; }).join(', '));
+        }
+        logSummary.textContent = bits.join(' · ');
+      }
+
       function setLogOpen(open) {
         if (open) setTuneOpen(false);
         document.body.classList.toggle('logging', !!open);
         logPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
+      }
+
+      // ---- points ----
+      // A quiet running total, kept in opal.void.points and shown in the log.
+      // Each score rises as a small number from where it was earned.
+      var pointsTotal = 0;
+      var pointEls = [];
+      var pointNext = 0;
+      try {
+        var savedPoints = parseInt(localStorage.getItem('opal.void.points'), 10);
+        if (isFinite(savedPoints) && savedPoints > 0) pointsTotal = savedPoints;
+      } catch (e) { /* private */ }
+
+      // Where a scene point is on screen, through the camera too.
+      function sceneToClient(x, y) {
+        var e = ease(clamp(scopeAmount, 0, 1));
+        var Z = Math.max(1, SCOPE_ZOOM);
+        var zoom = Math.exp(Math.log(Z) * e);
+        var k = Z > 1.0001 ? (1 - 1 / zoom) / (1 - 1 / Z) : 0;
+        var ex = viewExt();
+        var r = canvas.getBoundingClientRect();
+        return {
+          x: r.left + ((x - scopeAim.x * k) * zoom / ex.x + 1) * 0.5 * r.width,
+          y: r.top + (1 - (y - scopeAim.y * k) * zoom / ex.y) * 0.5 * r.height
+        };
+      }
+
+      function addPoints(n, x, y) {
+        pointsTotal += n;
+        try { localStorage.setItem('opal.void.points', String(pointsTotal)); } catch (e) { /* private */ }
+        renderLogSummary();
+        if (!pointEls.length) {
+          for (var i = 0; i < 6; i++) {
+            var made = document.createElement('div');
+            made.className = 'pt';
+            made.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(made);
+            pointEls.push(made);
+          }
+        }
+        var el = pointEls[pointNext];
+        pointNext = (pointNext + 1) % pointEls.length;
+        var at = sceneToClient(x, y);
+        el.textContent = '+' + n;
+        el.style.left = clamp(at.x, 28, window.innerWidth - 28).toFixed(1) + 'px';
+        el.style.top = clamp(at.y, 44, window.innerHeight - 28).toFixed(1) + 'px';
+        el.classList.remove('go');
+        void el.offsetWidth;
+        el.classList.add('go');
+      }
+
+      // ---- the moon's cycle ----
+      // Dust the wind throws at the moon waxes it from its crescent. Full, it
+      // has its moment, holds for a while, then wanes back on its own.
+      var MOON_HIT_SPEED = 0.17;     // how fast dust must be going, per unit of the dust-speed setting; idle drift stays under it
+      var MOON_HIT_CHARGE = 0.006;   // one mote's share of the cycle
+      var MOON_CHARGE_RATE = 0.018;  // the most the cycle can gain per second
+      var MOON_FULL_HOLD = 20;       // scene seconds it stays full
+      var MOON_WANE = 90;            // scene seconds from full back to the crescent
+      var moonCharge = 0;
+      var moonShown = 0;             // moonCharge, eased, as drawn
+      var moonBudget = 0;
+      var moonFullUntil = -1;
+      var moonWaning = false;
+      var moonFlare = 0;
+      var moonPaid = 0;              // tenths of the cycle already scored
+
+      function moonHit() {
+        if (moonFullUntil >= 0 || moonBudget <= 0) return;
+        var gain = Math.min(MOON_HIT_CHARGE, moonBudget);
+        moonBudget -= gain;
+        moonCharge = Math.min(1, moonCharge + gain);
+        var tenths = Math.floor(moonCharge * 10 + 1e-6);
+        while (moonPaid < tenths) {
+          moonPaid++;
+          if (moonPaid < 10) addPoints(10, pointer.x, pointer.y + MOON_R * 1.35);
+        }
+        if (moonCharge >= 1) fullMoon();
+      }
+
+      function fullMoon() {
+        moonCharge = 1;
+        moonFullUntil = time + MOON_FULL_HOLD;
+        moonWaning = false;
+        moonFlare = 1;
+        moonPaid = 10;
+        addShock(pointer.x, pointer.y, 0.95, MOON_SHOCK_REACH);
+        burstParticles(pointer.x, pointer.y, reduceMotion ? 14 : 46, reduceMotion ? 0.7 : 1.25);
+        impulseParticles(pointer.x, pointer.y, 0.7, reduceMotion ? 0.25 : 0.6);
+        audio.aperture('light', scenePan(pointer.x), 1.0);
+        addPoints(100, pointer.x, pointer.y + MOON_R * 1.35);
+        showShot('<b>full moon</b>', 'hit', 3600);
+        try { if (navigator.vibrate) navigator.vibrate([14, 50, 14, 50, 40]); } catch (err) { /* optional */ }
+      }
+
+      function updateMoonCycle(dt) {
+        moonBudget = Math.min(MOON_CHARGE_RATE * 0.5, moonBudget + MOON_CHARGE_RATE * dt);
+        moonFlare *= Math.exp(-dt / 1.6);
+        if (moonFullUntil >= 0) {
+          if (time >= moonFullUntil) {
+            moonFullUntil = -1;
+            moonWaning = true;
+          }
+        } else if (moonWaning) {
+          moonCharge -= dt / MOON_WANE;
+          if (moonCharge <= 0) {
+            moonCharge = 0;
+            moonWaning = false;
+          }
+          // What the moon has lost can be earned again.
+          moonPaid = Math.min(moonPaid, Math.floor(moonCharge * 10 + 1e-6));
+        }
+        moonShown += (moonCharge - moonShown) * Math.min(1, dt * 2.5);
+      }
+
+      // ---- the streetlamp ----
+      // A rare sight on the ride. It warms the pines and creatures around it
+      // until you photograph it dark; for a while after, the sky is darker too.
+      var LAMP_REACH = 0.85;         // how fast it passes, like a tree in that lane
+      var LAMP_FIRST = [50, 120];    // scene seconds before the first one
+      var LAMP_EVERY = [120, 240];   // and between later ones
+      var LAMP_DARK = 30;            // scene seconds the sky stays darker
+      var lamp = null;
+      var nextLampAt = time + LAMP_FIRST[0] + Math.random() * (LAMP_FIRST[1] - LAMP_FIRST[0]);
+      var skyDark = 0;
+      var skyDarkUntil = -1;
+
+      function spawnLamp() {
+        lamp = {
+          side: Math.random() < 0.5 ? -1 : 1,
+          wy: viewExt().y + 0.32 + travel * LAMP_REACH,
+          shotAt: -1,
+          seed: Math.random() * 50
+        };
+      }
+
+      function lampHead() {
+        return { x: lamp.side * viewExt().x * 0.62, y: lamp.wy - travel * LAMP_REACH };
+      }
+
+      // Its light now: a slight hum, then a stutter and dark once photographed.
+      function lampLightNow() {
+        if (!lamp) return 0;
+        if (lamp.shotAt < 0) {
+          return reduceMotion ? 0.96 : 0.95 + 0.05 * Math.sin(time * 31 + lamp.seed) * Math.sin(time * 7.3);
+        }
+        var a = time - lamp.shotAt;
+        if (a >= 0.95) return 0;
+        var left = 1 - a / 0.95;
+        return reduceMotion ? left : left * (Math.sin(a * 47) > -0.2 ? 1 : 0.12);
+      }
+
+      function updateLamp(dt) {
+        if (!ride) nextLampAt = Math.max(nextLampAt, time + 20);
+        if (!lamp && ride && sky && rideAmount > 0.95 && skyAmount > 0.95 && !stillMode && time > nextLampAt) spawnLamp();
+        if (lamp && (rideAmount <= 0 || lampHead().y < -viewExt().y - 0.5)) {
+          lamp = null;
+          nextLampAt = time + LAMP_EVERY[0] + Math.random() * (LAMP_EVERY[1] - LAMP_EVERY[0]);
+        }
+        var want = time < skyDarkUntil ? 1 : 0;
+        skyDark += (want - skyDark) * Math.min(1, dt * (want ? 0.9 : 0.35));
+        if (skyDark < 0.001 && !want) skyDark = 0;
+      }
+
+      function lampInShot() {
+        if (!lamp || lamp.shotAt >= 0 || rideAmount < 0.5) return false;
+        var h = lampHead();
+        var tol = Math.max(SNAP_TOL / Math.max(1, SCOPE_ZOOM), 0.045);
+        return Math.hypot(h.x - scopeAim.x, h.y - scopeAim.y) < tol;
+      }
+
+      function caughtLamp() {
+        var h = lampHead();
+        lamp.shotAt = time;
+        skyDarkUntil = time + LAMP_DARK;
+        addPoints(50, h.x, h.y);
+        showShot('<b>streetlamp</b> &middot; dark now &middot; the stars come closer', 'hit', 4200);
+        audio.aperture('dark', scenePan(h.x), 0.8);
+        try { if (navigator.vibrate) navigator.vibrate([10, 30, 10, 60, 24]); } catch (err) { /* optional */ }
+      }
+
+      function uploadGame() {
+        gl.uniform2f(uniforms.moonCycle, moonShown, moonFlare);
+        if (lamp) {
+          var h = lampHead();
+          gl.uniform4f(uniforms.lamp, h.x, h.y, lampLightNow(), rideAmount);
+        } else {
+          gl.uniform4f(uniforms.lamp, 0, 0, 0, 0);
+        }
+        gl.uniform1f(uniforms.skyDark, skyDark);
       }
 
       function frame(now) {
@@ -6373,6 +6765,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         if (!last) last = now;
         var dt = (now - last) / 1000;
         last = now;
+        adaptRenderScale(dt * 1000);
         if (dt > 0.06) dt = 0.06;
         if (dt < 0) dt = 0;
         time += dt * 0.92;
@@ -6388,6 +6781,8 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         updateScope(dt);
         updateQuarry(dt);
         updateSaucer(dt);
+        updateMoonCycle(dt);
+        updateLamp(dt);
         layoutReticle();
         moonBreath *= Math.exp(-dt / moonBreathLife);
         moonAmount += ((moonMode ? 1 : 0) - moonAmount) * Math.min(1, dt * 2.2);
@@ -6449,6 +6844,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         writeView();
         uploadQuarry();
         uploadSaucer();
+        uploadGame();
         if (flowOK) {
           gl.activeTexture(gl.TEXTURE1);
           gl.bindTexture(gl.TEXTURE_2D, flow.sky.tex);
@@ -6823,6 +7219,10 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           // Send a flyer over now (only under the sky): mostly for testing.
           if (sky) launchFlyers(e.shiftKey ? 'owl' : 'bat');
           e.preventDefault();
+        } else if (e.key === 'j' || e.key === 'J') {
+          // Bring a streetlamp along the ride now: mostly for testing.
+          if (ride && sky) spawnLamp();
+          e.preventDefault();
         }
       });
 
@@ -7191,6 +7591,36 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           what: 'Longest gap between flyers, in scene seconds.',
           small: 'The top of the random range above. Keep it at or above FLY_EVERY[0].',
           large: 'Together with [0] it sets how rare the flyers feel.' },
+
+        // --- the moon's cycle & the streetlamp ---
+        { n: 'MOON_HIT_SPEED', g: 'events', min: 0.05, max: 0.6, step: 0.01,
+          what: 'How fast dust must strike the moon to count, per unit of the dust-speed setting.',
+          small: 'updateParticles compares the mote\u2019s speed and its inward speed at the rim with this \u00d7 settings.velocity.',
+          large: 'Too low and idle drift fills the moon by itself; too high and only the hardest strokes count.' },
+        { n: 'MOON_CHARGE_RATE', g: 'events', min: 0.005, max: 0.1, step: 0.001,
+          what: 'The most of the moon\u2019s cycle dust can add per second.',
+          small: 'Refills moonBudget, which moonHit spends. 1 / this is the fewest seconds from crescent to full.',
+          large: 'The main control on how long a full moon takes.' },
+        { n: 'MOON_FULL_HOLD', g: 'events', min: 2, max: 120, step: 1,
+          what: 'Scene seconds the moon stays full.',
+          small: 'fullMoon sets moonFullUntil; hits are ignored until then.',
+          large: 'Longer gives the full moon more of a moment.' },
+        { n: 'MOON_WANE', g: 'events', min: 10, max: 600, step: 5,
+          what: 'Scene seconds from full back to the crescent.',
+          small: 'updateMoonCycle takes dt / this off moonCharge while it wanes. Tenths it loses can score again.',
+          large: 'Short: the moon is a repeatable game. Long: a full moon lingers.' },
+        { n: 'LAMP_EVERY[0]', find: ['LAMP_EVERY'], g: 'events', min: 5, max: 600, step: 5,
+          what: 'Shortest gap between streetlamps, in scene seconds.',
+          small: 'updateLamp schedules nextLampAt when a lamp leaves the view.',
+          large: 'Takes effect at the next schedule (press J to bring one now).' },
+        { n: 'LAMP_EVERY[1]', find: ['LAMP_EVERY'], g: 'events', min: 5, max: 900, step: 5,
+          what: 'Longest gap between streetlamps, in scene seconds.',
+          small: 'The top of the random range above. Keep it at or above LAMP_EVERY[0].',
+          large: 'Together with [0] it sets how rare a lamp feels.' },
+        { n: 'LAMP_DARK', g: 'events', min: 3, max: 180, step: 1,
+          what: 'Scene seconds the sky stays darker after a lamp is put out.',
+          small: 'caughtLamp sets skyDarkUntil; updateLamp eases skyDark, sent as uSkyDark.',
+          large: 'The length of the reward: a lower town glow and more low stars.' },
 
         // --- the camera ---
         { n: 'SCOPE_ZOOM', g: 'camera', min: 1.5, max: 12, step: 0.1,
