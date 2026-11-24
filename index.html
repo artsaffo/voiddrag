@@ -627,33 +627,6 @@
     .shot b { font-weight: 600; letter-spacing: 0.14em; }
     .shot .stars { color: #ffdfa6; letter-spacing: 0.06em; }
 
-    /* A score: a small number that rises from where it was earned and goes. */
-    .pt {
-      position: fixed;
-      z-index: 3;
-      left: 0;
-      top: 0;
-      color: #ffdfa6;
-      font-size: 11px;
-      letter-spacing: 0.1em;
-      text-shadow: 0 0 10px rgba(255, 200, 130, 0.45);
-      pointer-events: none;
-      opacity: 0;
-    }
-    .pt.go { animation: pt-rise 1.7s ease-out forwards; }
-    @keyframes pt-rise {
-      0% { opacity: 0; transform: translate(-50%, 2px); }
-      18% { opacity: 0.95; }
-      100% { opacity: 0; transform: translate(-50%, -30px); }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      @keyframes pt-rise {
-        0% { opacity: 0; transform: translate(-50%, 0); }
-        18% { opacity: 0.95; }
-        100% { opacity: 0; transform: translate(-50%, 0); }
-      }
-    }
-
     .log-summary { margin: 0 2px 6px; color: var(--ink-dim); font-size: 10px; letter-spacing: 0.05em; }
     .log-summary:empty { display: none; }
     .log-list { list-style: none; margin: 0; padding: 0; }
@@ -1208,8 +1181,8 @@ uniform vec4 uSaucerB;
 uniform vec4 uGlint;
 uniform float uFlash;
 // The moon's cycle: x how full it is (0 the crescent, 1 full), y the flare of
-// a full moon just reached.
-uniform vec2 uMoonCycle;
+// a full moon just reached, z the halo's swell as blown dust sinks in.
+uniform vec3 uMoonCycle;
 // A streetlamp on the ride: xy its head in scene units, z how bright it is
 // now, w how present it is (0 = none, and the shader skips all of it).
 uniform vec4 uLamp;
@@ -2384,7 +2357,7 @@ vec4 moonDisc(vec2 q) {
   vec3 ash = albedo * vec3(0.55, 0.62, 0.80) * MOON_ASHEN * (0.55 + 0.45 * n.z);
   // A thin bright rim on the sunlit limb, the painter's touch.
   float limb = smoothstep(0.80, 1.0, r) * lit;
-  return vec4(sun + ash * (1.0 - lit) + MOON_LIGHT * limb * 0.25, cover);
+  return vec4(sun + ash * (1.0 - lit) + MOON_LIGHT * limb * (0.25 + 0.30 * uMoonCycle.z), cover);
 }
 
 // Moonlight scattered in the air around the disc, leaning toward the horns.
@@ -2396,7 +2369,7 @@ vec2 moonGlow(vec2 q) {
   float near = exp(-dist / 0.10);
   float wide = exp(-dist / 0.50);
   float flare = (1.0 + 0.9 * uPress) * (1.0 + 1.0 * uMoonCycle.x + 1.6 * uMoonCycle.y);
-  return vec2(near, wide) * flare * uMoonOn;
+  return vec2(near * (1.0 + 1.1 * uMoonCycle.z), wide) * flare * uMoonOn;
 }
 
 // The saucer: a flat lens of dark metal with a glass dome, lit from the
@@ -4358,7 +4331,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         }
         // The dust feels the same air for a moment after the finger has passed.
         if (now - (state.gpuff || 0) > 45) {
-          addPuff(x, y, dx * speed, dy * speed, r * 1.5, 0);
+          addPuff(x, y, dx * speed, dy * speed, r * 1.5, 0, true);
           state.gpuff = now;
         }
         state.gx = x; state.gy = y; state.gt = now;
@@ -4543,7 +4516,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         }
         addMark(x, y, 0.145, 26, 0.95, 0.18);
         if (sky && flowOK) addGust(x, y, 0, 0, 0.11 * settings.brush * reach, 0.9 * brushScale(), 1.5, Math.random() * 4);
-        addPuff(x, y, 0, 0, 0.14 * settings.brush * reach, 0.9);
+        addPuff(x, y, 0, 0, 0.14 * settings.brush * reach, 0.9, true);
         addShock(x, y, 0.95, reach);
         burstParticles(x, y, 26, 1.0);
         impulseParticles(x, y, 0.55 * reach, 0.6);
@@ -4640,7 +4613,28 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         // Out-of-focus motes stay where they are: a burst is close at hand.
         for (var tries = 0; best.blur > 0 && tries < 6; tries++) best = particles[(Math.random() * activeParticles) | 0];
         best.fade = 0;
+        best.sink = 0;
+        best.steer = 0;
         return best;
+      }
+
+      // A sinking mote's spark over its sink (0..1): a quick flare, a slow fade.
+      function sinkEnv(s) {
+        return s < 0.12 ? s / 0.12 : Math.pow(1 - (s - 0.12) / 0.88, 1.5);
+      }
+
+      // A mote the moon took in comes back from upwind, just out of sight:
+      // from the left under the sky's drift, from the top on the ride.
+      function respawnMote(p) {
+        if (rideAmount > 0.5) { p.x = Math.random(); p.y = 1.06; }
+        else { p.x = -0.06; p.y = Math.random(); }
+        p.vx = 0;
+        p.vy = 0;
+        p.sink = 0;
+        p.steer = 0;
+        p.flash = 0;
+        p.energy = 0;
+        p.fade = 0;
       }
 
       function pullParticles(x, y, count, force) {
@@ -4999,7 +4993,9 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
             glintRate: 0.025 + Math.random() * 0.060,
             glintPhase: Math.random(),
             lit: 0,
-            hitAt: 0
+            steer: 0,     // until this time it counts as dust you blew
+            sink: 0,      // 0..1 while it sinks into the moon
+            sinkA: 0      // where on the rim, as an angle from the moon's centre
           });
         }
       }
@@ -5020,9 +5016,11 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       var MAX_PUFFS = 40;
       var PUFF_LIFE = 2.2;
 
-      function addPuff(x, y, vx, vy, r, radial) {
+      // user: the air came from your brush (not the moon's own passage), so
+      // the dust it moves can feed the moon.
+      function addPuff(x, y, vx, vy, r, radial, user) {
         if (puffs.length >= MAX_PUFFS) puffs.shift();
-        puffs.push({ x: x, y: y, vx: vx, vy: vy, r: r, rNow: r, radial: radial || 0, born: time, w: 1 });
+        puffs.push({ x: x, y: y, vx: vx, vy: vy, r: r, rNow: r, radial: radial || 0, born: time, w: 1, user: !!user });
       }
 
       function updatePuffs(dt) {
@@ -5192,7 +5190,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       var stirrers = [];
       var orbStir = {};
 
-      function trackStir(o, x, y, dt, part, gain) {
+      function trackStir(o, x, y, dt, part, gain, user) {
         if (o.stirX === undefined) { o.stirX = x; o.stirY = y; o.stirVx = 0; o.stirVy = 0; }
         if (dt > 0.0001) {
           var vx = (x - o.stirX) / dt;
@@ -5205,7 +5203,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         }
         o.stirX = x;
         o.stirY = y;
-        stirrers.push({ x: x, y: y, vx: o.stirVx, vy: o.stirVy, speed: Math.hypot(o.stirVx, o.stirVy), part: part, gain: gain });
+        stirrers.push({ x: x, y: y, vx: o.stirVx, vy: o.stirVy, speed: Math.hypot(o.stirVx, o.stirVy), part: part, gain: gain, user: !!user });
       }
 
       function buildStirrers(dt) {
@@ -5219,7 +5217,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           // its path (streams), so it barely parts it.
           var windPart = 1.5 - 1.25 * (flowOK ? skyAmount : 0);
           active.forEach(function (state) {
-            trackStir(state, state.x, state.y, dt, state.kind === 'light' ? -0.4 : (state.moon ? 1.5 : windPart), 1.0);
+            trackStir(state, state.x, state.y, dt, state.kind === 'light' ? -0.4 : (state.moon ? 1.5 : windPart), 1.0, !state.moon);
           });
         } else if (!moonMode) {
           // The resting pearl stirs gently too, so hovering already feels alive.
@@ -5248,8 +5246,28 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         var moonGlowUp = 1 + 0.45 * moonShown;
         var lampNow = lamp && skyOn ? lampLightNow() * rideAmount : 0;
         var lampAt = lampNow > 0 ? lampHead() : null;
+        var drinks = moonDrinks();
         for (var i = 0; i < activeParticles; i++) {
           var p = particles[i];
+          // A mote sinking into the moon: a spark that rides the rim with the
+          // moon, flares and goes. Then the wind brings it back from upwind.
+          if (p.sink > 0) {
+            p.sink += dt / MOON_SINK;
+            if (p.sink >= 1 || !moonMode) {
+              respawnMote(p);
+            } else {
+              // Just outside the rim, so it shows against the sky and not
+              // lost in the bright limb.
+              p.x = (pointer.x + Math.cos(p.sinkA) * MOON_R * 1.035) / (2.0 * ext.x) + 0.5;
+              p.y = (pointer.y + Math.sin(p.sinkA) * MOON_R * 1.035) / (2.0 * ext.y) + 0.5;
+              p.vx = 0;
+              p.vy = 0;
+              p.lit = 1;
+              p.dark = 0;
+              p.bright = (0.25 + 1.5 * sinkEnv(p.sink)) * p.fade * (stillMode ? 0.35 : 1.0);
+            }
+            continue;
+          }
           var px = (p.x - 0.5) * 2.0 * ext.x;
           var py = (p.y - 0.5) * 2.0 * ext.y;
           var extraDrag = 0;
@@ -5278,6 +5296,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
               var fgrip = Math.min(1, fw * 6.0 * dt);
               p.vx += (pf.vx * MOTE_CARRY * vscale - p.vx) * fgrip;
               p.vy += (pf.vy * MOTE_CARRY * vscale - p.vy) * fgrip;
+              if (pf.user && fw > 0.12) p.steer = time + STEER_HOLD;
               if (pf.radial > 0) {
                 var fdl = Math.sqrt(fd2) + 1e-4;
                 ax += fdx / fdl * pf.radial * fw * 1.4 * vscale;
@@ -5312,6 +5331,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
                 p.vx += (streamHit.tx / stl * flowSp - p.vx) * cg;
                 p.vy += (streamHit.ty / stl * flowSp - p.vy) * cg;
                 p.flash = Math.max(p.flash, inside * life * 0.18);
+                if (inside * life > 0.2) p.steer = time + STEER_HOLD;
               }
             }
           }
@@ -5369,6 +5389,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
             extraDrag += 2.5 * Math.min(1, falloff) * (1.0 - smoothstep(orbitR, orbitR * 3.0, adist));
             p.energy = Math.max(p.energy, falloff * 0.7);
             p.flash = Math.max(p.flash, falloff * 0.5);
+            if (falloff > 0.25) p.steer = time + STEER_HOLD;
           }
           var g = Math.hypot(gx, gy);
           if (g > GATHER_PULL) { gx *= GATHER_PULL / g; gy *= GATHER_PULL / g; }
@@ -5397,6 +5418,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
               ax += sdx * sinv * part - sdy * sinv * curl;
               ay += sdy * sinv * part + sdx * sinv * curl;
               p.flash = Math.max(p.flash, w * move * st.gain * 0.35);
+              if (st.user && w * move > 0.2) p.steer = time + STEER_HOLD;
             }
           }
 
@@ -5432,25 +5454,16 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
             if (moonLight > 0) {
               var mdist = Math.hypot(psx - pointer.x, psy - pointer.y);
               p.lit = moonLight * moonGlowUp * Math.exp(-Math.max(0, mdist - MOON_R) / MOTE_MOON_REACH);
-              // Dust the wind throws at the moon strikes its rim and bounces.
-              // A held moon only parts the dust, so it never counts.
-              if (!moonGrab && !p.blur && moonAmount > 0.9 && mdist < MOON_R && mdist > MOON_R * 0.72 &&
-                  speed > MOON_HIT_SPEED * vscale && time >= p.hitAt) {
-                var hnx = (psx - pointer.x) / mdist;
-                var hny = (psy - pointer.y) / mdist;
-                var hvn = (p.vx - moonVel.x) * hnx + (p.vy - moonVel.y) * hny;
-                if (hvn < -MOON_HIT_SPEED * vscale) {
-                  p.vx -= 1.65 * hvn * hnx;
-                  p.vy -= 1.65 * hvn * hny;
-                  psx = pointer.x + hnx * MOON_R;
-                  psy = pointer.y + hny * MOON_R;
-                  p.x = psx / (2.0 * ext.x) + 0.5;
-                  p.y = psy / (2.0 * ext.y) + 0.5;
-                  p.hitAt = time + 1.2;
-                  p.flash = Math.max(p.flash, 1.1);
-                  p.energy = Math.max(p.energy, 0.8);
-                  moonHit();
-                }
+              // Dust you blew that reaches the disc sinks into the moon where
+              // it crossed the rim. Anything else passes behind (uploadParticles).
+              if (drinks && !p.blur && p.steer > time && mdist < MOON_R) {
+                p.sink = 1e-4;
+                p.sinkA = Math.atan2(psy - pointer.y, psx - pointer.x);
+                p.flash = 0;
+                p.energy = 0;
+                moonSip();
+                drinks = moonDrinks();
+                continue;
               }
             }
             var twinkle = 0.70 + 0.30 * Math.sin(time * p.tw + p.phase);
@@ -5509,6 +5522,10 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         // it is drawn at least this wide and its brightness says how big it is.
         var minSize = 2.6 / ch;
         var F = PARTICLE_FLOATS;
+        // The moon hangs in front of the dust, as it does the stars: a mote
+        // slides behind its edge (the near, out-of-focus ones stay in front).
+        var moonHide = moonMode ? moonAmount * skyAmount : 0;
+        var pxPerUnit = Math.min(cw, ch) * 0.5;
         for (var i = 0; i < activeParticles; i++) {
           var p = particles[i];
           var base = i * 3 * F;
@@ -5521,16 +5538,29 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
             ? (0.045 + 0.035 * p.lum) * toH
             : Math.max(minSize, (0.0015 + 0.0020 * p.lum + 0.0034 * near * near) * (1 + 0.6 * p.lit) * toH);
           var size = p.size + (skySize - p.size) * skyAmount;
+          // A spark on the moon's rim swells as it flares.
+          if (p.sink > 0) size *= 1 + 1.8 * sinkEnv(p.sink);
           var blur = p.blur * skyAmount;
           var silver = Math.min(1, 0.22 * skyAmount + p.lit * 0.85);
+          var hides = moonHide > 0 && !p.blur && !(p.sink > 0);
           for (var k = 0; k < 3; k++) {
             var at = base + k * F;
             var back = lag * k;
-            particleData[at] = p.x - ux * back;
-            particleData[at + 1] = p.y - uy * back;
-            particleData[at + 2] = size * (1.0 - k * 0.24);
+            var kx = p.x - ux * back;
+            var ky = p.y - uy * back;
+            var kSize = size * (1.0 - k * 0.24);
+            var shown = 1;
+            if (hides) {
+              // Covered by how far inside the rim it is, over its own radius.
+              var edge = Math.max(1.0, kSize * ch * 0.5) / pxPerUnit;
+              var dm = Math.hypot((kx - 0.5) * 2.0 * ext.x - pointer.x, (ky - 0.5) * 2.0 * ext.y - pointer.y);
+              if (dm < MOON_R + edge) shown = 1 - moonHide * (1 - smoothstep(MOON_R - edge, MOON_R + edge, dm));
+            }
+            particleData[at] = kx;
+            particleData[at + 1] = ky;
+            particleData[at + 2] = kSize;
             // An out-of-focus mote draws no streak behind it.
-            particleData[at + 3] = p.bright * (1.0 - k * 0.30) * lightOut * (k > 0 ? 1 - blur : 1);
+            particleData[at + 3] = p.bright * (1.0 - k * 0.30) * lightOut * (k > 0 ? 1 - blur : 1) * shown;
             particleData[at + 4] = blur;
             particleData[at + 5] = silver;
           }
@@ -6456,10 +6486,7 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         }
         var res = recordFind(Q, score);
         var tag = res === 'new' ? 'new' : res === 'better' ? 'a better picture' : 'already in the log';
-        if (res !== 'again') {
-          var at = starToScene(Q.sx, Q.sy);
-          addPoints(res === 'new' ? 10 * score : 5, at.x, at.y);
-        }
+        if (res !== 'again') addPoints(res === 'new' ? 10 * score : 5);
         showShot('<b>' + Q.name + '</b> &middot; ' + QUARRY_KINDS[Q.kind] + ' &middot; <span class="stars">' +
           starsText(score) + '</span> &middot; ' + tag, 'hit', 4200);
         if (!flourish) return;
@@ -6555,7 +6582,6 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         logEntries.forEach(function (x) { kinds[x.kind] = (kinds[x.kind] || 0) + 1; });
         var n = logEntries.length;
         var bits = [];
-        if (pointsTotal > 0) bits.push(pointsTotal.toLocaleString() + (pointsTotal === 1 ? ' point' : ' points'));
         if (n > 0) {
           bits.push(n + (n === 1 ? ' star' : ' stars'));
           bits.push(QUARRY_KINDS.filter(function (k) { return kinds[k]; }).map(function (k) { return kinds[k] + ' ' + k; }).join(', '));
@@ -6570,79 +6596,57 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
       }
 
       // ---- points ----
-      // A quiet running total, kept in opal.void.points and shown in the log.
-      // Each score rises as a small number from where it was earned.
+      // Kept quietly in opal.void.points and not shown anywhere for now.
       var pointsTotal = 0;
-      var pointEls = [];
-      var pointNext = 0;
       try {
         var savedPoints = parseInt(localStorage.getItem('opal.void.points'), 10);
         if (isFinite(savedPoints) && savedPoints > 0) pointsTotal = savedPoints;
       } catch (e) { /* private */ }
 
-      // Where a scene point is on screen, through the camera too.
-      function sceneToClient(x, y) {
-        var e = ease(clamp(scopeAmount, 0, 1));
-        var Z = Math.max(1, SCOPE_ZOOM);
-        var zoom = Math.exp(Math.log(Z) * e);
-        var k = Z > 1.0001 ? (1 - 1 / zoom) / (1 - 1 / Z) : 0;
-        var ex = viewExt();
-        var r = canvas.getBoundingClientRect();
-        return {
-          x: r.left + ((x - scopeAim.x * k) * zoom / ex.x + 1) * 0.5 * r.width,
-          y: r.top + (1 - (y - scopeAim.y * k) * zoom / ex.y) * 0.5 * r.height
-        };
-      }
-
-      function addPoints(n, x, y) {
+      function addPoints(n) {
         pointsTotal += n;
         try { localStorage.setItem('opal.void.points', String(pointsTotal)); } catch (e) { /* private */ }
-        renderLogSummary();
-        if (!pointEls.length) {
-          for (var i = 0; i < 6; i++) {
-            var made = document.createElement('div');
-            made.className = 'pt';
-            made.setAttribute('aria-hidden', 'true');
-            document.body.appendChild(made);
-            pointEls.push(made);
-          }
-        }
-        var el = pointEls[pointNext];
-        pointNext = (pointNext + 1) % pointEls.length;
-        var at = sceneToClient(x, y);
-        el.textContent = '+' + n;
-        el.style.left = clamp(at.x, 28, window.innerWidth - 28).toFixed(1) + 'px';
-        el.style.top = clamp(at.y, 44, window.innerHeight - 28).toFixed(1) + 'px';
-        el.classList.remove('go');
-        void el.offsetWidth;
-        el.classList.add('go');
       }
 
       // ---- the moon's cycle ----
-      // Dust the wind throws at the moon waxes it from its crescent. Full, it
-      // has its moment, holds for a while, then wanes back on its own.
-      var MOON_HIT_SPEED = 0.17;     // how fast dust must be going, per unit of the dust-speed setting; idle drift stays under it
-      var MOON_HIT_CHARGE = 0.006;   // one mote's share of the cycle
-      var MOON_CHARGE_RATE = 0.018;  // the most the cycle can gain per second
+      // Dust you blow into the moon sinks into it with a spark on the rim, and
+      // each mote waxes it a little from its crescent. Dust that only drifts
+      // there passes behind it. Full, it has its moment, holds for a while,
+      // then wanes back on its own.
+      var MOON_SIP = 0.0035;         // one mote's share of the cycle, at 1200 motes on a 4:3 view
+      var MOON_GULP = 0.10;          // the most of the cycle it takes in at once; it refills over 4 s
+      var STEER_HOLD = 1.6;          // seconds a mote still counts as blown after your wind lets it go
+      var MOON_SINK = 0.7;           // seconds a sinking mote's spark lasts
       var MOON_FULL_HOLD = 20;       // scene seconds it stays full
       var MOON_WANE = 90;            // scene seconds from full back to the crescent
       var moonCharge = 0;
       var moonShown = 0;             // moonCharge, eased, as drawn
-      var moonBudget = 0;
       var moonFullUntil = -1;
       var moonWaning = false;
       var moonFlare = 0;
+      var moonSipGlow = 0;           // the halo's brief swell as dust sinks in
+      var moonThirst = MOON_GULP;    // how much it can take in right now
       var moonPaid = 0;              // tenths of the cycle already scored
 
-      function moonHit() {
-        if (moonFullUntil >= 0 || moonBudget <= 0) return;
-        var gain = Math.min(MOON_HIT_CHARGE, moonBudget);
-        moonBudget -= gain;
+      // Can the moon take in dust now? Not while held, not while full, and
+      // not past one gulp at a time: the rest of a big stroke passes behind.
+      function moonDrinks() {
+        return !moonGrab && moonFullUntil < 0 && moonThirst > 0 && moonMode && moonAmount > 0.9 && skyAmount > 0.9 && scopeAmount < 0.5;
+      }
+
+      function moonSip() {
+        // Thinner dust (fewer motes, or a taller screen) brings fewer motes
+        // per stroke, so each is worth more: a stroke fills the same anywhere.
+        var e = viewExt();
+        var density = activeParticles / (4 * e.x * e.y);
+        var gain = MOON_SIP * clamp(225 / density, 0.5, 8);
+        moonThirst -= gain;
         moonCharge = Math.min(1, moonCharge + gain);
+        moonSipGlow = Math.min(1, moonSipGlow + 0.22);
         var tenths = Math.floor(moonCharge * 10 + 1e-6);
         while (moonPaid < tenths) {
           moonPaid++;
-          if (moonPaid < 10) addPoints(10, pointer.x, pointer.y + MOON_R * 1.35);
+          if (moonPaid < 10) addPoints(10);
         }
         if (moonCharge >= 1) fullMoon();
       }
@@ -6657,14 +6661,15 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         burstParticles(pointer.x, pointer.y, reduceMotion ? 14 : 46, reduceMotion ? 0.7 : 1.25);
         impulseParticles(pointer.x, pointer.y, 0.7, reduceMotion ? 0.25 : 0.6);
         audio.aperture('light', scenePan(pointer.x), 1.0);
-        addPoints(100, pointer.x, pointer.y + MOON_R * 1.35);
+        addPoints(100);
         showShot('<b>full moon</b>', 'hit', 3600);
         try { if (navigator.vibrate) navigator.vibrate([14, 50, 14, 50, 40]); } catch (err) { /* optional */ }
       }
 
       function updateMoonCycle(dt) {
-        moonBudget = Math.min(MOON_CHARGE_RATE * 0.5, moonBudget + MOON_CHARGE_RATE * dt);
         moonFlare *= Math.exp(-dt / 1.6);
+        moonSipGlow *= Math.exp(-dt / 0.5);
+        moonThirst = Math.min(MOON_GULP, moonThirst + MOON_GULP / 4 * dt);
         if (moonFullUntil >= 0) {
           if (time >= moonFullUntil) {
             moonFullUntil = -1;
@@ -6742,14 +6747,14 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
         var h = lampHead();
         lamp.shotAt = time;
         skyDarkUntil = time + LAMP_DARK;
-        addPoints(50, h.x, h.y);
+        addPoints(50);
         showShot('<b>streetlamp</b> &middot; dark now &middot; the stars come closer', 'hit', 4200);
         audio.aperture('dark', scenePan(h.x), 0.8);
         try { if (navigator.vibrate) navigator.vibrate([10, 30, 10, 60, 24]); } catch (err) { /* optional */ }
       }
 
       function uploadGame() {
-        gl.uniform2f(uniforms.moonCycle, moonShown, moonFlare);
+        gl.uniform3f(uniforms.moonCycle, moonShown, moonFlare, moonSipGlow);
         if (lamp) {
           var h = lampHead();
           gl.uniform4f(uniforms.lamp, h.x, h.y, lampLightNow(), rideAmount);
@@ -7593,21 +7598,29 @@ VoidAudio.prototype._impulse = function (seconds, decay) {
           large: 'Together with [0] it sets how rare the flyers feel.' },
 
         // --- the moon's cycle & the streetlamp ---
-        { n: 'MOON_HIT_SPEED', g: 'events', min: 0.05, max: 0.6, step: 0.01,
-          what: 'How fast dust must strike the moon to count, per unit of the dust-speed setting.',
-          small: 'updateParticles compares the mote\u2019s speed and its inward speed at the rim with this \u00d7 settings.velocity.',
-          large: 'Too low and idle drift fills the moon by itself; too high and only the hardest strokes count.' },
-        { n: 'MOON_CHARGE_RATE', g: 'events', min: 0.005, max: 0.1, step: 0.001,
-          what: 'The most of the moon\u2019s cycle dust can add per second.',
-          small: 'Refills moonBudget, which moonHit spends. 1 / this is the fewest seconds from crescent to full.',
-          large: 'The main control on how long a full moon takes.' },
+        { n: 'MOON_SIP', g: 'events', min: 0.0005, max: 0.05, step: 0.0005,
+          what: 'How much of the moon\u2019s cycle one mote of blown dust adds as it sinks in.',
+          small: 'moonSip adds this to moonCharge, scaled up when the dust is thinner than 1200 motes on a 4:3 view. There, 1 / this is how many motes take the crescent to full.',
+          large: 'With MOON_GULP, the main control on how long a full moon takes.' },
+        { n: 'MOON_GULP', g: 'events', min: 0.02, max: 1, step: 0.01,
+          what: 'The most of the moon’s cycle it takes in at once. It refills over 4 seconds.',
+          small: 'moonSip spends moonThirst; moonDrinks says no once it is empty, so the rest of a big stroke passes behind with no spark.',
+          large: 'Evens out strokes: a sweep straight through the moon and a careful aim add about the same. 4 / this is the fewest seconds to full.' },
+        { n: 'STEER_HOLD', g: 'events', min: 0.2, max: 6, step: 0.1,
+          what: 'Seconds a mote still counts as blown after your wind lets it go.',
+          small: 'Your stroke, its puffs, a tap or the light\u2019s pull set p.steer = time + this. Only such dust sinks into the moon; the rest passes behind.',
+          large: 'Short: only dust you drive straight in counts. Long: dust you blew a while ago still counts when it drifts in.' },
+        { n: 'MOON_SINK', g: 'events', min: 0.1, max: 2, step: 0.05,
+          what: 'Seconds a mote\u2019s spark lasts on the rim as it sinks in.',
+          small: 'The mote rides the rim with the moon, flares and fades, then comes back from upwind (respawnMote).',
+          large: 'Longer leaves a brighter trail of sparks round the rim during a strong stroke.' },
         { n: 'MOON_FULL_HOLD', g: 'events', min: 2, max: 120, step: 1,
           what: 'Scene seconds the moon stays full.',
-          small: 'fullMoon sets moonFullUntil; hits are ignored until then.',
+          small: 'fullMoon sets moonFullUntil; no dust sinks in until then.',
           large: 'Longer gives the full moon more of a moment.' },
         { n: 'MOON_WANE', g: 'events', min: 10, max: 600, step: 5,
           what: 'Scene seconds from full back to the crescent.',
-          small: 'updateMoonCycle takes dt / this off moonCharge while it wanes. Tenths it loses can score again.',
+          small: 'updateMoonCycle takes dt / this off moonCharge while it wanes. Blown dust can wax it again meanwhile.',
           large: 'Short: the moon is a repeatable game. Long: a full moon lingers.' },
         { n: 'LAMP_EVERY[0]', find: ['LAMP_EVERY'], g: 'events', min: 5, max: 600, step: 5,
           what: 'Shortest gap between streetlamps, in scene seconds.',
